@@ -777,9 +777,7 @@ function App() {
                 nicheLog={aiBroadPeakLog}
               />
             </div>
-          </div>
 
-          <div className="layout">
             <div className="card chart-card">
               <h3 style={{ marginTop: 0 }}>
                 3. Log–log Market Cap vs Revenue by era
