@@ -888,9 +888,13 @@ function App() {
       try {
         setMacroLoading(true);
         setMacroError("");
+        // The macro CSV lives in /data/combined-macrodata.csv at the repo root.
+        // Try both relative and absolute paths so it works whether the site is
+        // hosted from /frontend or from the repo root.
         const paths = [
-          "./combined-macrodata.csv",
           "../data/combined-macrodata.csv",
+          "./data/combined-macrodata.csv",
+          "data/combined-macrodata.csv",
           "/data/combined-macrodata.csv",
         ];
         const rows = await loadMacrodata(paths);
@@ -904,7 +908,7 @@ function App() {
         console.error(e);
         setMacroError(
           (e && e.message ? e.message : "") +
-            " Unable to load macro dataset from the data directory."
+            " Unable to load macro dataset from the data directory (data/combined-macrodata.csv)."
         );
       } finally {
         setMacroLoading(false);
