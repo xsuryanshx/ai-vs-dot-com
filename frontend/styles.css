@@ -202,9 +202,9 @@ button:active {
 
 .story-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 @media (max-width: 1024px) {
@@ -220,6 +220,13 @@ button:active {
 }
 
 .story-chart {
+  min-height: 520px;
+}
+
+.story-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
   min-height: 520px;
 }
 
@@ -250,6 +257,32 @@ button:active {
 
 .story-body {
   margin-top: 6px;
+}
+
+.info-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.info-headline {
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.info-body {
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+
+.info-box ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #e5e7eb;
+  display: grid;
+  gap: 4px;
 }
 
 .macro-layout {

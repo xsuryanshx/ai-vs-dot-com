@@ -591,8 +591,11 @@ function McRevScatterChart({ dotcom, aiPure, aiNiche }) {
           {
             label: "Pure-play AI (log-log)",
             data: nichePts,
-            backgroundColor: "rgba(59,130,246,0.6)",
-            pointRadius: 3,
+            backgroundColor: "rgba(249,115,22,0.75)",
+            borderColor: "#fb923c",
+            borderWidth: 1.2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
             pointStyle: "triangle",
           },
         ],
@@ -1090,6 +1093,49 @@ function App() {
       ? formatDateLabel(macroRows[macroRange[1]].Date)
       : "—";
 
+  const storyDetails = {
+    "ps-trend": {
+      title: "Heat over time",
+      body:
+        "Dot-com P/S averages went vertical in 1999–2000 as revenue lagged valuations, while today's AI ramp is steeper than Big Tech's AI era but still anchored by real businesses.",
+      bullets: [
+        "Dot-com: the line spikes sharply as speculation decouples from fundamentals.",
+        "Pure-play AI: averages rise faster than Big Tech AI thanks to narrow revenue bases.",
+        "Big Tech AI: steadier climb because diversified platforms buffer hype swings.",
+      ],
+    },
+    peaks: {
+      title: "Peak distributions",
+      body:
+        "Peak windows show where cohorts cluster. Dot-com names piled up at extreme valuations, pure AI sits above Big Tech, but neither revisit 2000's mania.",
+      bullets: [
+        "Dot-com: box sits high with long whiskers—classic froth.",
+        "Pure-play AI: higher medians than Big Tech but tighter than dot-com peaks.",
+        "Big Tech AI: compact box thanks to diversified revenue cushions.",
+      ],
+    },
+    scale: {
+      title: "Scale vs. revenue",
+      body:
+        "On the log–log scatter, Big Tech spans huge revenue bases with healthy market-cap alignment. Dot-com and pure AI points overlap across log values, reflecting similar speculative pockets, while Big Tech remains comparatively orderly.",
+      bullets: [
+        "Dot-com vs. Pure AI: overlapping clouds show both chase value ahead of revenue.",
+        "Big Tech AI: trends up and to the right with fewer outliers.",
+        "Spread: pure AI and dot-com clusters sit at lower revenue scales, amplifying volatility.",
+      ],
+    },
+    median: {
+      title: "Typical peaks",
+      body:
+        "Median P/S at cohort peaks highlights cushion. Big Tech AI stays near sustainable bands, while pure AI floats higher—still calmer than dot-com extremes.",
+      bullets: [
+        "Dot-com: elevated medians underline the bubble's breadth.",
+        "Pure-play AI: higher medians hint at optimism priced in before revenue catches up.",
+        "Big Tech AI: lower medians signal investors reward proven engines.",
+      ],
+    },
+  };
+
   return (
     <div className="page">
       <div className="hero">
@@ -1233,6 +1279,15 @@ function App() {
               </button>
             </div>
             <div className="story-body">
+              <div className="info-box">
+                <div className="info-headline">{storyDetails[activeStory].title}</div>
+                <p className="info-body">{storyDetails[activeStory].body}</p>
+                <ul>
+                  {storyDetails[activeStory].bullets.map((b, idx) => (
+                    <li key={idx}>{b}</li>
+                  ))}
+                </ul>
+              </div>
               {!ready && !loading && (
                 <p style={{ color: "var(--muted)", marginTop: 6 }}>
                   Waiting for data. Check that the CSV/XLSX files sit next to
@@ -1272,9 +1327,9 @@ function App() {
                 <>
                   <p className="chart-subtitle">
                     On the log–log scatter, Big Tech spreads across massive
-                    revenue bases with healthier market-cap alignment, while
-                    niche AI firms bunch at lower revenue with wider valuation
-                    swings—classic bubble shape.
+                    revenue bases with healthier market-cap alignment. Dot-com
+                    and pure AI points overlap across log values—both chasing
+                    valuation ahead of revenue—while Big Tech stays orderly.
                   </p>
                   <McRevScatterChart
                     dotcom={activeDotcom}
