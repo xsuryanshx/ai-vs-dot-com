@@ -1,15 +1,18 @@
-const { useEffect, useRef, useState } = React;
+import { useEffect, useRef, useState } from 'react';
+import Chart from 'chart.js/auto';
+import * as XLSX from 'xlsx';
+import './styles.css';
 
 // ============================================================
 // 0. PATHS & THEME
 // ============================================================
 
-// All paths are relative to /frontend/index.html
+// All paths are relative to public directory (served at root)
 const DATA_PATHS = {
-  dotcom: "Dotcom.csv",          // lives in frontend/
-  bigTech: "HighTech.xlsx",      // lives in frontend/
-  pureAi: "PureAI.xlsx",         // lives in frontend/
-  macro: "combined-macrodata.csv", // lives in frontend/
+  dotcom: "/Dotcom.csv",
+  bigTech: "/HighTech.xlsx",
+  pureAi: "/PureAI.xlsx",
+  macro: "/combined-macrodata.csv",
 };
 
 const THEME = {
@@ -1317,5 +1320,5 @@ function App() {
   );
 }
 
-const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<App />);
+// Entry point - this will be imported by main.jsx
+export default App;
