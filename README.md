@@ -12,6 +12,7 @@ This repository contains tools and dashboards to compare the current AI boom wit
 
 - **Python 3.8+**
 - **pip** (Python package manager)
+- **Node.js 18+** and **npm** (for the React frontend)
 
 ## Setup
 
@@ -42,19 +43,38 @@ The app will open in your default web browser (usually at `http://localhost:8501
 
 ### 2. Web Frontend (React)
 
-The frontend is a static React application located in the `frontend/` directory. To run it locally without CORS issues, use a simple HTTP server.
+The frontend is a React application built with Vite. To build and run:
 
-**Using Python:**
+**First-time setup:**
 ```bash
 cd frontend
-python3 -m http.server 8000
+npm install
 ```
-Then open `http://localhost:8000` in your browser.
 
-**Using Node.js (npx):**
+**Build for production:**
+```bash
+npm run build
+```
+This creates an optimized production build in the `dist/` directory.
+
+**Run development server:**
+```bash
+npm run dev
+```
+Opens at `http://localhost:5173` (or next available port).
+
+**Preview production build:**
+```bash
+npm run serve
+```
+Serves the production build at `http://localhost:8000`.
+
+**Quick deploy workflow:**
 ```bash
 cd frontend
-npx serve .
+npm install
+npm run build
+npm run serve
 ```
 
 ### 3. Bubble Comparison Script
