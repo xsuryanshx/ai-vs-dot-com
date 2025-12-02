@@ -9,7 +9,7 @@ const DATA_PATHS = {
   dotcom: "Dotcom.csv",          // lives in frontend/
   bigTech: "HighTech.xlsx",      // lives in frontend/
   pureAi: "PureAI.xlsx",         // lives in frontend/
-  macro: "../data/combined-macrodata.csv", // lives in data/
+  macro: "combined-macrodata.csv", // lives in frontend/
 };
 
 const THEME = {
