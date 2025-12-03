@@ -10,7 +10,8 @@ const DATA_PATHS = {
   bigTech: "HighTech.xlsx", // lives in frontend/
   pureAi: "PureAI.xlsx", // lives in frontend/
   macro: "combined-macrodata.csv", // lives in frontend/
-  pe: "pe-averages.csv", // lives in frontend/
+  pe: "pe-averages.csv", // lives in frontend/ 
+
   // Nasdaq-100 index-level series (CSV, 2 columns: date/quarter + value)
   peIndexDotcom: "nasdaq100_pe_1996_2000.csv",
   peIndexModern: "nasdaq100_pe_2022_2025.csv",
@@ -40,6 +41,15 @@ const MACRO_COLUMNS = [
   "GDP Yearly Growth",
   "NASDAQ Yearly Growth",
 ];
+
+// Common line style for ALL line charts
+const LINE_STYLE = {
+  tension: 0.3,
+  borderWidth: 3,
+  pointRadius: 0,
+  pointHoverRadius: 5,
+  fill: false,
+};
 
 // ============================================================
 // 1. Data loading helpers
@@ -201,9 +211,7 @@ async function loadIndexSeries(path, label) {
     }
     const keys = Object.keys(rows[0]);
     if (keys.length < 2) {
-      console.warn(
-        `⚠️ Index series at ${path} does not have at least 2 columns`
-      );
+      console.warn(`⚠️ Index series at ${path} does not have at least 2 columns`);
       return { labels: [], values: [] };
     }
     const labelKey = keys[0];
@@ -214,9 +222,7 @@ async function loadIndexSeries(path, label) {
       .map((r) => toNumberOrNull(r[valueKey]))
       .map((v) => (Number.isFinite(v) ? v : null));
 
-    console.log(
-      `✅ Loaded index series ${label || path}: ${labels.length} points`
-    );
+    console.log(`✅ Loaded index series ${label || path}: ${labels.length} points`);
     return { labels, values };
   } catch (e) {
     console.error(`❌ Failed to load index series ${label || path}:`, e);
@@ -396,11 +402,9 @@ function normalizeMacro(rows, columns, method, referenceRows) {
   } else if (method === "Z-score (standardize)") {
     columns.forEach((col) => {
       const values = ref.map((r) => r[col]).filter((v) => v != null);
-      const mean =
-        values.reduce((s, v) => s + v, 0) / (values.length || 1);
+      const mean = values.reduce((s, v) => s + v, 0) / (values.length || 1);
       const variance =
-        values.reduce((s, v) => s + (v - mean) ** 2, 0) /
-        (values.length || 1);
+        values.reduce((s, v) => s + (v - mean) ** 2, 0) / (values.length || 1);
       stats[col] = { mean, std: Math.sqrt(variance) };
     });
   }
@@ -492,30 +496,21 @@ function AvgPsLineChart({ dotcom, aiPure, aiBroad }) {
             data: align(dot),
             borderColor: SERIES_COLORS.dotcom.solid,
             backgroundColor: SERIES_COLORS.dotcom.fill,
-            tension: 0.3,
-            borderWidth: 3,
-            pointRadius: 3,
-            pointHoverRadius: 6,
+            ...LINE_STYLE,
           },
           {
             label: "Big Tech AI",
             data: align(pure),
             borderColor: SERIES_COLORS.bigTech.solid,
             backgroundColor: SERIES_COLORS.bigTech.fill,
-            tension: 0.3,
-            borderWidth: 3,
-            pointRadius: 3,
-            pointHoverRadius: 6,
+            ...LINE_STYLE,
           },
           {
             label: "Pure-play AI",
             data: align(broad),
             borderColor: SERIES_COLORS.pureAi.solid,
             backgroundColor: SERIES_COLORS.pureAi.fill,
-            tension: 0.3,
-            borderWidth: 3,
-            pointRadius: 3,
-            pointHoverRadius: 6,
+            ...LINE_STYLE,
           },
         ],
       },
@@ -578,36 +573,27 @@ function AvgPeLineChart({ peRows, toggles }) {
       data: align("Dotcom"),
       borderColor: SERIES_COLORS.dotcom.solid,
       backgroundColor: SERIES_COLORS.dotcom.fill,
-      tension: 0.3,
-      borderWidth: 3,
-      pointRadius: 3,
-      pointHoverRadius: 6,
       spanGaps: true,
       hidden: !toggles.dotcom,
+      ...LINE_STYLE,
     },
     {
       label: "Big Tech AI",
       data: align("BigTechAI"),
       borderColor: SERIES_COLORS.bigTech.solid,
       backgroundColor: SERIES_COLORS.bigTech.fill,
-      tension: 0.3,
-      borderWidth: 3,
-      pointRadius: 3,
-      pointHoverRadius: 6,
       spanGaps: true,
       hidden: !toggles.aiPure,
+      ...LINE_STYLE,
     },
     {
       label: "Pure-play AI",
       data: align("PureAI"),
       borderColor: SERIES_COLORS.pureAi.solid,
       backgroundColor: SERIES_COLORS.pureAi.fill,
-      tension: 0.3,
-      borderWidth: 3,
-      pointRadius: 3,
-      pointHoverRadius: 6,
       spanGaps: true,
       hidden: !toggles.aiBroad,
+      ...LINE_STYLE,
     },
   ];
 
@@ -1001,7 +987,7 @@ function MedianBarChart({ values, label }) {
   return <canvas ref={canvasRef} />;
 }
 
-// ================== Nasdaq-100 index charts (from Streamlit app) ====================
+// ================== Nasdaq-100 index charts ====================
 
 function IndexMetricCards({ metricName, dotSeries, modernSeries }) {
   if (
@@ -1101,12 +1087,7 @@ function IndexSideBySideChart({ metricName, dotSeries, modernSeries }) {
           data: values,
           borderColor: color.solid,
           backgroundColor: color.fill,
-          tension: 0.25,
-          borderWidth: 3,
-          pointRadius: 3,
-          pointHoverRadius: 6,
-          spanGaps: true,
-          fill: true,
+          ...LINE_STYLE,
         },
       ],
     },
@@ -1122,6 +1103,8 @@ function IndexSideBySideChart({ metricName, dotSeries, modernSeries }) {
           backgroundColor: THEME.tooltipBg,
           borderColor: THEME.tooltipBorder,
           borderWidth: 1,
+          titleColor: "#fff",
+          bodyColor: "#cbd5e1",
         },
       },
       scales: {
@@ -1249,14 +1232,8 @@ function IndexOverlayChart({ metricName, dotSeries, modernSeries }) {
       const dotPositions = dotVals.map((_, i) => i - dotPeakIdx);
       const modernPositions = modernVals.map((_, i) => i - modernPeakIdx);
 
-      const minX = Math.min(
-        ...dotPositions,
-        ...modernPositions
-      );
-      const maxX = Math.max(
-        ...dotPositions,
-        ...modernPositions
-      );
+      const minX = Math.min(...dotPositions, ...modernPositions);
+      const maxX = Math.max(...dotPositions, ...modernPositions);
 
       const dotPoints = dotVals
         .map((v, i) =>
@@ -1301,22 +1278,14 @@ function IndexOverlayChart({ metricName, dotSeries, modernSeries }) {
               data: dotPoints,
               borderColor: SERIES_COLORS.dotcom.solid,
               backgroundColor: SERIES_COLORS.dotcom.fill,
-              tension: 0.25,
-              borderWidth: 3,
-              pointRadius: 4,
-              pointHoverRadius: 7,
-              fill: false,
+              ...LINE_STYLE,
             },
             {
               label: "Modern AI Era (2022–2025)",
               data: modernPoints,
               borderColor: SERIES_COLORS.bigTech.solid,
               backgroundColor: SERIES_COLORS.bigTech.fill,
-              tension: 0.25,
-              borderWidth: 3,
-              pointRadius: 4,
-              pointHoverRadius: 7,
-              fill: false,
+              ...LINE_STYLE,
             },
           ],
         },
@@ -1334,6 +1303,8 @@ function IndexOverlayChart({ metricName, dotSeries, modernSeries }) {
               backgroundColor: THEME.tooltipBg,
               borderColor: THEME.tooltipBorder,
               borderWidth: 1,
+              titleColor: "#fff",
+              bodyColor: "#cbd5e1",
             },
           },
           scales: {
@@ -1384,10 +1355,7 @@ function MacroLineChart({ series, yTitle }) {
           borderColor: s.color || MACRO_COLORS[idx % MACRO_COLORS.length],
           backgroundColor:
             (s.color || MACRO_COLORS[idx % MACRO_COLORS.length]) + "20",
-          tension: 0.3,
-          pointRadius: 0,
-          borderWidth: 2,
-          fill: false,
+          ...LINE_STYLE,
         })),
       },
       options: {
@@ -1403,6 +1371,8 @@ function MacroLineChart({ series, yTitle }) {
             backgroundColor: THEME.tooltipBg,
             borderColor: THEME.tooltipBorder,
             borderWidth: 1,
+            titleColor: "#fff",
+            bodyColor: "#cbd5e1",
             callbacks: {
               title: (items) =>
                 items[0]
@@ -1515,7 +1485,7 @@ function App() {
           setMacroRange([0, Math.max(mRows.length - 1, 0)]);
         }
 
-        // Nasdaq-100 index-level series (always safe, loader never throws)
+        // Nasdaq-100 index-level series
         const [
           peIdxDot,
           peIdxMod,
@@ -1795,9 +1765,9 @@ function App() {
         <div className="tag">Dot-com vs AI</div>
         <h1>Is the AI bubble real?</h1>
         <p>
-          We contrast the late-1990s dot-com spike with today&apos;s AI
-          surge. See why diversified giants are structurally safer than
-          the narrow bets of the past.
+          We contrast the late-1990s dot-com spike with today&apos;s AI surge.
+          See why diversified giants are structurally safer than the narrow bets
+          of the past.
         </p>
         <div className="controls-row">
           <label className="toggle-pill">
@@ -1827,7 +1797,48 @@ function App() {
         </div>
       </div>
 
-      {/* STORY SECTION (existing P/S + P/E cohort graphs) */}
+      {/* GLOBAL P/S vs P/E TOGGLE (outside card, controls cohorts + Nasdaq) */}
+      <div
+        className="metric-toggle-row"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          marginBottom: "1.5rem",
+          justifyContent: "flex-start",
+        }}
+      >
+        <span
+          style={{
+            fontSize: "0.9rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            color: "#9ca3af",
+          }}
+        >
+          Valuation metric:
+        </span>
+        <button
+          className={`story-btn ${ratioMode === "ps" ? "active" : ""}`}
+          onClick={() => {
+            setRatioMode("ps");
+            setActiveStory("trend");
+          }}
+        >
+          P/S ratio
+        </button>
+        <button
+          className={`story-btn ${ratioMode === "pe" ? "active" : ""}`}
+          onClick={() => {
+            setRatioMode("pe");
+            setActiveStory("trend");
+          }}
+        >
+          P/E ratio
+        </button>
+      </div>
+
+      {/* STORY SECTION (P/S + P/E cohort graphs) */}
       <div className="story-section">
         <div className="section-header">
           <h2>The Data Story</h2>
@@ -1835,39 +1846,11 @@ function App() {
 
         <div className="story-grid">
           <div className="card story-content">
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                marginBottom: 12,
-              }}
-            >
-              <button
-                className={`story-btn ${ratioMode === "ps" ? "active" : ""}`}
-                onClick={() => {
-                  setRatioMode("ps");
-                  setActiveStory("trend");
-                }}
-              >
-                P/S ratio
-              </button>
-              <button
-                className={`story-btn ${ratioMode === "pe" ? "active" : ""}`}
-                onClick={() => {
-                  setRatioMode("pe");
-                  setActiveStory("trend");
-                }}
-              >
-                P/E ratio
-              </button>
-            </div>
             <div className="story-tabs">
               {Object.keys(storyContent[ratioMode]).map((k) => (
                 <button
                   key={k}
-                  className={`story-btn ${
-                    activeStory === k ? "active" : ""
-                  }`}
+                  className={`story-btn ${activeStory === k ? "active" : ""}`}
                   onClick={() => setActiveStory(k)}
                 >
                   {storyContent[ratioMode][k].title}
@@ -2009,8 +1992,8 @@ function App() {
                     marginTop: 8,
                   }}
                 >
-                  Note: Some cohorts are missing or partially loaded. Check
-                  file paths and CSV headers if something looks off.
+                  Note: Some cohorts are missing or partially loaded. Check file
+                  paths and CSV headers if something looks off.
                 </span>
               )}
             </div>
@@ -2018,7 +2001,7 @@ function App() {
         </div>
       </div>
 
-      {/* NEW NASDAQ-100 INDEX-LEVEL SECTION (from Streamlit app) */}
+      {/* NASDAQ-100 INDEX-LEVEL SECTION (shares metric toggle above) */}
       <div className="story-section">
         <div className="section-header">
           <h2>Nasdaq-100 Index Valuation Metrics</h2>
@@ -2067,13 +2050,13 @@ function App() {
         </div>
       </div>
 
-      {/* MACRO SECTION (unchanged, sits below everything) */}
+      {/* MACRO SECTION */}
       <div className="macro-section">
         <div className="section-header">
           <h2>Macroeconomic Context</h2>
         </div>
 
-        {/* Bull / Bear controls from previous version */}
+        {/* Bull / Bear controls */}
         <div
           className="macro-story-controls"
           style={{
