@@ -10,6 +10,7 @@ const DATA_PATHS = {
   bigTech: "HighTech.xlsx",      // lives in frontend/
   pureAi: "PureAI.xlsx",         // lives in frontend/
   macro: "combined-macrodata.csv", // lives in frontend/
+  pe: "pe-averages.csv",         // lives in frontend/
 };
 
 const THEME = {
@@ -95,6 +96,12 @@ async function loadExcelAsObjects(path) {
   return rows;
 }
 
+function toNumberOrNull(value) {
+  if (value === "" || value == null) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
 // Convert "Company/Metric/year columns" → tidy panel
 function tidyPanelJS(rows, years) {
   const records = [];
@@ -167,6 +174,24 @@ async function loadExcelPanel(path, years, label) {
   }
 }
 
+async function loadPeAverages() {
+  try {
+    const rows = await loadCsvAsObjects(DATA_PATHS.pe);
+    console.log(`✅ Loaded P/E averages, raw rows: ${rows.length}`);
+    return rows
+      .map((r) => ({
+        Year: Number(r.Year),
+        Dotcom: toNumberOrNull(r.Dotcom),
+        BigTechAI: toNumberOrNull(r.BigTechAI),
+        PureAI: toNumberOrNull(r.PureAI),
+      }))
+      .filter((r) => Number.isFinite(r.Year));
+  } catch (e) {
+    console.error("❌ Failed to load P/E averages:", e);
+    return [];
+  }
+}
+
 // ============================================================
 // 2. Valuation helpers
 // ============================================================
@@ -234,6 +259,18 @@ function medianLogPs(records, years) {
   const median =
     vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid];
   return Math.log(median);
+}
+
+function medianValue(values) {
+  const nums = values
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v));
+  if (!nums.length) return null;
+  nums.sort((a, b) => a - b);
+  const mid = Math.floor(nums.length / 2);
+  return nums.length % 2 === 0
+    ? (nums[mid - 1] + nums[mid]) / 2
+    : nums[mid];
 }
 
 // ============================================================
@@ -472,12 +509,205 @@ function AvgPsLineChart({ dotcom, aiPure, aiBroad }) {
   return <canvas ref={canvasRef} />;
 }
 
-function PeakBoxplotChart({ dotLog, pureLog, broadLog }) {
+function AvgPeLineChart({ peRows, toggles }) {
+  const canvasRef = useRef(null);
+
+  const years = Array.from(
+    new Set(
+      peRows
+        .map((r) => r.Year)
+        .filter((y) => Number.isFinite(y))
+    )
+  ).sort((a, b) => a - b);
+
+  const rowByYear = new Map(peRows.map((r) => [r.Year, r]));
+  const align = (key) =>
+    years.map((y) => {
+      const row = rowByYear.get(y);
+      const val = row ? row[key] : null;
+      return val ?? null;
+    });
+
+  const datasets = [
+    {
+      label: "Dot-com",
+      data: align("Dotcom"),
+      borderColor: SERIES_COLORS.dotcom.solid,
+      backgroundColor: SERIES_COLORS.dotcom.fill,
+      tension: 0.3,
+      borderWidth: 3,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      spanGaps: true,
+      hidden: !toggles.dotcom,
+    },
+    {
+      label: "Big Tech AI",
+      data: align("BigTechAI"),
+      borderColor: SERIES_COLORS.bigTech.solid,
+      backgroundColor: SERIES_COLORS.bigTech.fill,
+      tension: 0.3,
+      borderWidth: 3,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      spanGaps: true,
+      hidden: !toggles.aiPure,
+    },
+    {
+      label: "Pure-play AI",
+      data: align("PureAI"),
+      borderColor: SERIES_COLORS.pureAi.solid,
+      backgroundColor: SERIES_COLORS.pureAi.fill,
+      tension: 0.3,
+      borderWidth: 3,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      spanGaps: true,
+      hidden: !toggles.aiBroad,
+    },
+  ];
+
+  useChart(
+    canvasRef,
+    () => ({
+      type: "line",
+      data: { labels: years, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { labels: { usePointStyle: true, boxWidth: 6 } },
+          tooltip: {
+            backgroundColor: THEME.tooltipBg,
+            titleColor: "#fff",
+            bodyColor: "#cbd5e1",
+            borderColor: THEME.tooltipBorder,
+            borderWidth: 1,
+            padding: 10,
+            callbacks: {
+              label: (c) => {
+                const val = Number(c.raw);
+                const display = Number.isFinite(val)
+                  ? val.toFixed(1)
+                  : "N/A";
+                return `${c.dataset.label}: ${display}x P/E`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { title: { display: true, text: "Average P/E" } },
+        },
+      },
+    }),
+    [JSON.stringify(peRows), toggles.dotcom, toggles.aiPure, toggles.aiBroad]
+  );
+
+  return <canvas ref={canvasRef} />;
+}
+
+function PeScatterChart({ peRows, toggles }) {
+  const canvasRef = useRef(null);
+
+  const makePoints = (key, enabled) =>
+    enabled
+      ? peRows
+          .map((r) => {
+            const raw = r[key];
+            if (raw === "" || raw == null) return null;
+            const num = Number(raw);
+            return Number.isFinite(num)
+              ? { x: r.Year, y: num }
+              : null;
+          })
+          .filter(
+            (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)
+          )
+      : [];
+
+  useChart(
+    canvasRef,
+    () => ({
+      type: "scatter",
+      data: {
+        datasets: [
+          {
+            label: "Dot-com",
+            data: makePoints("Dotcom", toggles.dotcom),
+            backgroundColor: SERIES_COLORS.dotcom.fill,
+            borderColor: SERIES_COLORS.dotcom.solid,
+            borderWidth: 1,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+          },
+          {
+            label: "Big Tech AI",
+            data: makePoints("BigTechAI", toggles.aiPure),
+            backgroundColor: SERIES_COLORS.bigTech.fill,
+            borderColor: SERIES_COLORS.bigTech.solid,
+            borderWidth: 1,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+          },
+          {
+            label: "Pure-play AI",
+            data: makePoints("PureAI", toggles.aiBroad),
+            backgroundColor: SERIES_COLORS.pureAi.fill,
+            borderColor: SERIES_COLORS.pureAi.solid,
+            borderWidth: 1,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { usePointStyle: true, boxWidth: 6 } },
+          tooltip: {
+            backgroundColor: THEME.tooltipBg,
+            titleColor: "#fff",
+            bodyColor: "#cbd5e1",
+            borderColor: THEME.tooltipBorder,
+            borderWidth: 1,
+            callbacks: {
+              label: (c) =>
+                `${c.dataset.label}: ${c.raw.y.toFixed(1)}x P/E in ${c.raw.x}`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            title: { display: true, text: "Year" },
+            grid: { display: false },
+            ticks: { precision: 0 },
+          },
+          y: {
+            title: { display: true, text: "P/E Ratio" },
+          },
+        },
+      },
+    }),
+    [JSON.stringify(peRows), toggles.dotcom, toggles.aiPure, toggles.aiBroad]
+  );
+
+  return <canvas ref={canvasRef} />;
+}
+
+function PeakBoxplotChart({
+  dotVals,
+  pureVals,
+  broadVals,
+  yTitle = "log(P/S Distribution)",
+}) {
   const canvasRef = useRef(null);
   const realStats = [
-    computeBoxStats(dotLog),
-    computeBoxStats(pureLog),
-    computeBoxStats(broadLog),
+    computeBoxStats(dotVals),
+    computeBoxStats(pureVals),
+    computeBoxStats(broadVals),
   ];
 
   const yBounds = (() => {
@@ -595,7 +825,7 @@ function PeakBoxplotChart({ dotLog, pureLog, broadLog }) {
           scales: {
             x: { grid: { display: false } },
             y: {
-              title: { display: true, text: "log(P/S Distribution)" },
+              title: { display: true, text: yTitle },
               suggestedMin: yBounds.min,
               suggestedMax: yBounds.max,
             },
@@ -603,7 +833,7 @@ function PeakBoxplotChart({ dotLog, pureLog, broadLog }) {
         },
       };
     },
-    [JSON.stringify(realStats)]
+    [JSON.stringify(realStats), yTitle]
   );
 
   return <canvas ref={canvasRef} />;
@@ -689,24 +919,24 @@ function McRevScatterChart({ dotcom, aiPure, aiBroad }) {
   return <canvas ref={canvasRef} />;
 }
 
-function MedianPsBarChart({ dotMed, pureMed, broadMed }) {
+function MedianBarChart({ values, label }) {
   const canvasRef = useRef(null);
 
   useChart(
     canvasRef,
     () => ({
       type: "bar",
-      data: {
-        labels: ["Dot-com Peak", "Big Tech AI Peak", "Pure AI Peak"],
-        datasets: [
-          {
-            label: "Median log(P/S)",
-            data: [dotMed, pureMed, broadMed],
-            backgroundColor: [
-              SERIES_COLORS.dotcom.fill,
-              SERIES_COLORS.bigTech.fill,
-              SERIES_COLORS.pureAi.fill,
-            ],
+        data: {
+          labels: ["Dot-com Peak", "Big Tech AI Peak", "Pure AI Peak"],
+          datasets: [
+            {
+              label,
+              data: values,
+              backgroundColor: [
+                SERIES_COLORS.dotcom.fill,
+                SERIES_COLORS.bigTech.fill,
+                SERIES_COLORS.pureAi.fill,
+              ],
             borderColor: [
               SERIES_COLORS.dotcom.solid,
               SERIES_COLORS.bigTech.solid,
@@ -724,12 +954,12 @@ function MedianPsBarChart({ dotMed, pureMed, broadMed }) {
         scales: {
           x: { grid: { display: false } },
           y: {
-            title: { display: true, text: "Median log(P/S)" },
+            title: { display: true, text: label },
           },
         },
       },
     }),
-    [dotMed, pureMed, broadMed]
+    [JSON.stringify(values), label]
   );
 
   return <canvas ref={canvasRef} />;
@@ -808,6 +1038,7 @@ function App() {
   const [aiBroad, setAiBroad] = useState([]);
   const [aiPure, setAiPure] = useState([]);
   const [macroRows, setMacroRows] = useState([]);
+  const [peAverages, setPeAverages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [usingFallback, setUsingFallback] = useState(false);
 
@@ -816,7 +1047,8 @@ function App() {
     aiPure: true,
     aiBroad: true,
   });
-  const [activeStory, setActiveStory] = useState("ps-trend");
+  const [ratioMode, setRatioMode] = useState("ps");
+  const [activeStory, setActiveStory] = useState("trend");
 
   const [macroColsState, setMacroColumns] = useState([]);
   const [macroSelection, setMacroSelection] = useState({});
@@ -830,7 +1062,7 @@ function App() {
     async function init() {
       setLoading(true);
       try {
-        const [dotPanel, purePanel, broadPanel, mRows] = await Promise.all([
+        const [dotPanel, purePanel, broadPanel, mRows, peRows] = await Promise.all([
           loadDotcomPanel(),
           loadExcelPanel(
             DATA_PATHS.bigTech,
@@ -843,13 +1075,20 @@ function App() {
             "PureAI.xlsx (Pure-play AI)"
           ),
           loadMacrodata(),
+          loadPeAverages(),
         ]);
 
         if (dotPanel.length) setDotcom(dotPanel);
         if (purePanel.length) setAiPure(purePanel);
         if (broadPanel.length) setAiBroad(broadPanel);
+        if (peRows && peRows.length) setPeAverages(peRows);
 
-        if (!dotPanel.length || !purePanel.length || !broadPanel.length) {
+        if (
+          !dotPanel.length ||
+          !purePanel.length ||
+          !broadPanel.length ||
+          !peRows.length
+        ) {
           setUsingFallback(true);
         }
 
@@ -891,6 +1130,30 @@ function App() {
   const dotMed = medianLogPs(activeDotcom, [1999, 2000]);
   const pureMed = medianLogPs(activeAiPure, [2023, 2024, 2025]);
   const broadMed = medianLogPs(activeAiBroad, [2023, 2024, 2025]);
+
+  const extractPe = (years, key, enabled) =>
+    enabled
+      ? peAverages
+          .filter((r) => years.includes(r.Year))
+          .map((r) => toNumberOrNull(r[key]))
+          .filter((v) => Number.isFinite(v))
+      : [];
+
+  const peDotPeaks = extractPe([1999, 2000], "Dotcom", cohortToggles.dotcom);
+  const peBigTechPeaks = extractPe(
+    [2023, 2024, 2025],
+    "BigTechAI",
+    cohortToggles.aiPure
+  );
+  const pePurePeaks = extractPe(
+    [2023, 2024, 2025],
+    "PureAI",
+    cohortToggles.aiBroad
+  );
+
+  const peDotMed = cohortToggles.dotcom ? medianValue(peDotPeaks) : null;
+  const peBigTechMed = cohortToggles.aiPure ? medianValue(peBigTechPeaks) : null;
+  const pePureMed = cohortToggles.aiBroad ? medianValue(pePurePeaks) : null;
 
   const macroFiltered = macroRows.slice(macroRange[0], macroRange[1] + 1);
   const macroSelectedCols = macroColsState.filter((c) => macroSelection[c]);
@@ -958,41 +1221,81 @@ function App() {
     setMacroSelection((p) => ({ ...p, [c]: !p[c] }));
 
   const storyContent = {
-    "ps-trend": {
-      title: "Heat over time",
-      body: "Dot-com valuations rocketed on top of single-product web ideas, often with fragile business models. Today's AI excitement sits on cash-generating platforms.",
-      bullets: [
-        "Dot-com: sharp spike as speculation decouples from fundamentals.",
-        "Pure-play AI: averages rise faster than Big Tech AI thanks to narrow revenue bases.",
-        "Big Tech AI: steadier climb because diversified platforms buffer hype swings.",
-      ],
+    ps: {
+      trend: {
+        title: "Heat over time",
+        body: "Dot-com valuations rocketed on top of single-product web ideas, often with fragile business models. Today's AI excitement sits on cash-generating platforms.",
+        bullets: [
+          "Dot-com: sharp spike as speculation decouples from fundamentals.",
+          "Pure-play AI: averages rise faster than Big Tech AI thanks to narrow revenue bases.",
+          "Big Tech AI: steadier climb because diversified platforms buffer hype swings.",
+        ],
+      },
+      peaks: {
+        title: "Peak distributions",
+        body: "Peak windows show where cohorts cluster. Dot-com names piled up at extreme valuations, pure AI sits above Big Tech, but neither revisit 2000's mania.",
+        bullets: [
+          "Dot-com: box sits high with long whiskers—classic froth.",
+          "Pure-play AI: higher medians than Big Tech but tighter than dot-com peaks.",
+          "Big Tech AI: compact box thanks to diversified revenue cushions.",
+        ],
+      },
+      scale: {
+        title: "Scale vs. Revenue",
+        body: "On the log–log scatter, Big Tech spans huge revenue bases with healthy market-cap alignment. Dot-com and pure AI points overlap across log values.",
+        bullets: [
+          "Dot-com vs. Pure AI: overlapping clouds show both chase value ahead of revenue.",
+          "Big Tech AI: trends up and to the right with fewer outliers.",
+          "Spread: pure AI and dot-com clusters sit at lower revenue scales, amplifying volatility.",
+        ],
+      },
+      median: {
+        title: "Typical peaks",
+        body: "Median P/S at cohort peaks highlights cushion. Big Tech AI stays nearer sustainable bands, while pure AI floats higher—still calmer than dot-com extremes.",
+        bullets: [
+          "Dot-com: elevated medians underline the bubble's breadth.",
+          "Pure-play AI: higher medians hint at optimism priced in before revenue catches up.",
+          "Big Tech AI: lower medians signal investors reward proven engines.",
+        ],
+      },
     },
-    peaks: {
-      title: "Peak distributions",
-      body: "Peak windows show where cohorts cluster. Dot-com names piled up at extreme valuations, pure AI sits above Big Tech, but neither revisit 2000's mania.",
-      bullets: [
-        "Dot-com: box sits high with long whiskers—classic froth.",
-        "Pure-play AI: higher medians than Big Tech but tighter than dot-com peaks.",
-        "Big Tech AI: compact box thanks to diversified revenue cushions.",
-      ],
-    },
-    scale: {
-      title: "Scale vs. Revenue",
-      body: "On the log–log scatter, Big Tech spans huge revenue bases with healthy market-cap alignment. Dot-com and pure AI points overlap across log values.",
-      bullets: [
-        "Dot-com vs. Pure AI: overlapping clouds show both chase value ahead of revenue.",
-        "Big Tech AI: trends up and to the right with fewer outliers.",
-        "Spread: pure AI and dot-com clusters sit at lower revenue scales, amplifying volatility.",
-      ],
-    },
-    median: {
-      title: "Typical peaks",
-      body: "Median P/S at cohort peaks highlights cushion. Big Tech AI stays nearer sustainable bands, while pure AI floats higher—still calmer than dot-com extremes.",
-      bullets: [
-        "Dot-com: elevated medians underline the bubble's breadth.",
-        "Pure-play AI: higher medians hint at optimism priced in before revenue catches up.",
-        "Big Tech AI: lower medians signal investors reward proven engines.",
-      ],
+    pe: {
+      trend: {
+        title: "Earnings heat",
+        body: "Average P/E traces how quickly sentiment whipsaws when earnings wobble. Dot-com crests into 2000, Big Tech dips with Amazon's 2022 loss, and pure AI sprints higher in 2024–25.",
+        bullets: [
+          "Dot-com: climbs from single digits toward ~76x at the bubble peak.",
+          "Big Tech AI: mid-30s–40s band with a 2022 negative blip from Amazon's EPS swing.",
+          "Pure-play AI: volatile path that rockets in 2024–25 as valuations outrun earnings.",
+        ],
+      },
+      peaks: {
+        title: "Peak P/E spreads",
+        body: "Peak windows show how earnings multiples bunch. Dot-com still sits highest, Big Tech moderates after the 2022 dip, and pure AI stretches wide into 2025.",
+        bullets: [
+          "Dot-com: peak P/E values stay elevated versus later eras.",
+          "Big Tech AI: tighter spread but dragged by the 2022 negative print.",
+          "Pure-play AI: sharp climb into triple digits by 2025 widens the box.",
+        ],
+      },
+      scale: {
+        title: "P/E by year",
+        body: "Scatter the yearly P/E points to see sentiment swings—negative 2022 for Big Tech, and surging pure AI prints in 2024–25 dominate the view.",
+        bullets: [
+          "Dot-com: steady ascent into the 1999–2000 crest.",
+          "Big Tech AI: quick downtick in 2022 before settling back to ~35x.",
+          "Pure-play AI: dramatic rise in 2024–25 after muted early years.",
+        ],
+      },
+      median: {
+        title: "Typical P/E peaks",
+        body: "Median P/E at peak windows shows dot-com still ahead, Big Tech in the mid-30s, and pure AI climbing into the low 30s despite negatives in 2021–22.",
+        bullets: [
+          "Dot-com: median peak P/E near 28x across 1999–2000.",
+          "Big Tech AI: median rebounds to mid-30s even with the 2022 drag.",
+          "Pure-play AI: median around 31x, masking a wide tail into 2025.",
+        ],
+      },
     },
   };
 
@@ -1041,8 +1344,34 @@ function App() {
 
         <div className="story-grid">
           <div className="card story-content">
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                marginBottom: 12,
+              }}
+            >
+              <button
+                className={`story-btn ${ratioMode === "ps" ? "active" : ""}`}
+                onClick={() => {
+                  setRatioMode("ps");
+                  setActiveStory("trend");
+                }}
+              >
+                P/S ratio
+              </button>
+              <button
+                className={`story-btn ${ratioMode === "pe" ? "active" : ""}`}
+                onClick={() => {
+                  setRatioMode("pe");
+                  setActiveStory("trend");
+                }}
+              >
+                P/E ratio
+              </button>
+            </div>
             <div className="story-tabs">
-              {Object.keys(storyContent).map((k) => (
+              {Object.keys(storyContent[ratioMode]).map((k) => (
                 <button
                   key={k}
                   className={`story-btn ${
@@ -1050,21 +1379,23 @@ function App() {
                   }`}
                   onClick={() => setActiveStory(k)}
                 >
-                  {storyContent[k].title}
+                  {storyContent[ratioMode][k].title}
                 </button>
               ))}
             </div>
             <div className="info-box">
               <div className="info-headline">
-                {storyContent[activeStory].title}
+                {storyContent[ratioMode][activeStory]?.title}
               </div>
               <p className="info-body">
-                {storyContent[activeStory].body}
+                {storyContent[ratioMode][activeStory]?.body}
               </p>
               <ul>
-                {storyContent[activeStory].bullets.map((b, i) => (
-                  <li key={i}>{b}</li>
-                ))}
+                {(storyContent[ratioMode][activeStory]?.bullets || []).map(
+                  (b, i) => (
+                    <li key={i}>{b}</li>
+                  )
+                )}
               </ul>
             </div>
           </div>
@@ -1082,44 +1413,102 @@ function App() {
                   Loading datasets...
                 </p>
               )}
-              {!loading && activeStory === "ps-trend" && (
-                <AvgPsLineChart
-                  dotcom={activeDotcom}
-                  aiPure={activeAiPure}
-                  aiBroad={activeAiBroad}
-                />
-              )}
-              {!loading && activeStory === "peaks" && (
-                <PeakBoxplotChart
-                  dotLog={dotPeakLog}
-                  pureLog={aiPurePeakLog}
-                  broadLog={aiBroadPeakLog}
-                />
-              )}
-              {!loading && activeStory === "scale" && (
-                <McRevScatterChart
-                  dotcom={activeDotcom}
-                  aiPure={activeAiPure}
-                  aiBroad={activeAiBroad}
-                />
-              )}
-              {!loading && activeStory === "median" && (
-                <MedianPsBarChart
-                  dotMed={dotMed}
-                  pureMed={pureMed}
-                  broadMed={broadMed}
-                />
-              )}
+              {!loading &&
+                ratioMode === "ps" &&
+                activeStory === "trend" && (
+                  <AvgPsLineChart
+                    dotcom={activeDotcom}
+                    aiPure={activeAiPure}
+                    aiBroad={activeAiBroad}
+                  />
+                )}
+              {!loading &&
+                ratioMode === "pe" &&
+                activeStory === "trend" && (
+                  <AvgPeLineChart
+                    peRows={peAverages}
+                    toggles={cohortToggles}
+                  />
+                )}
+              {!loading &&
+                ratioMode === "ps" &&
+                activeStory === "peaks" && (
+                  <PeakBoxplotChart
+                    dotVals={dotPeakLog}
+                    pureVals={aiPurePeakLog}
+                    broadVals={aiBroadPeakLog}
+                    yTitle="log(P/S Distribution)"
+                  />
+                )}
+              {!loading &&
+                ratioMode === "pe" &&
+                activeStory === "peaks" && (
+                  <PeakBoxplotChart
+                    dotVals={peDotPeaks}
+                    pureVals={peBigTechPeaks}
+                    broadVals={pePurePeaks}
+                    yTitle="P/E at Peaks"
+                  />
+                )}
+              {!loading &&
+                ratioMode === "ps" &&
+                activeStory === "scale" && (
+                  <McRevScatterChart
+                    dotcom={activeDotcom}
+                    aiPure={activeAiPure}
+                    aiBroad={activeAiBroad}
+                  />
+                )}
+              {!loading &&
+                ratioMode === "pe" &&
+                activeStory === "scale" && (
+                  <PeScatterChart
+                    peRows={peAverages}
+                    toggles={cohortToggles}
+                  />
+                )}
+              {!loading &&
+                ratioMode === "ps" &&
+                activeStory === "median" && (
+                  <MedianBarChart
+                    values={[dotMed, pureMed, broadMed]}
+                    label="Median log(P/S)"
+                  />
+                )}
+              {!loading &&
+                ratioMode === "pe" &&
+                activeStory === "median" && (
+                  <MedianBarChart
+                    values={[peDotMed, peBigTechMed, pePureMed]}
+                    label="Median P/E"
+                  />
+                )}
             </div>
             <div className="chart-subtitle">
-              {activeStory === "ps-trend" &&
+              {ratioMode === "ps" &&
+                activeStory === "trend" &&
                 "Logarithmic scale showing valuation multiples over time. Dot-com bubble clearly visible on the left."}
-              {activeStory === "peaks" &&
+              {ratioMode === "pe" &&
+                activeStory === "trend" &&
+                "Average P/E paths: dot-com rockets into 1999–2000, Big Tech shows a 2022 dip from Amazon's loss, and pure AI spikes into 2024–25."}
+              {ratioMode === "ps" &&
+                activeStory === "peaks" &&
                 "Distribution of Valuation/Revenue ratios at market peaks. Dot-com outliers sit much higher."}
-              {activeStory === "scale" &&
+              {ratioMode === "pe" &&
+                activeStory === "peaks" &&
+                "Peak P/E spread across cohorts—dot-com remains highest, Big Tech dips in 2022, pure AI stretches widest into 2025."}
+              {ratioMode === "ps" &&
+                activeStory === "scale" &&
                 "Comparing Market Cap vs Revenue on a log-log scale. Big Tech aligns with scale; Dot-com scattered."}
-              {activeStory === "median" &&
+              {ratioMode === "pe" &&
+                activeStory === "scale" &&
+                "Yearly P/E scatter highlights sentiment swings, including the 2022 Big Tech dip and pure AI's late surge."}
+              {ratioMode === "ps" &&
+                activeStory === "median" &&
                 "Median Price-to-Sales ratio at the height of each era. Big Tech valuations remain grounded."}
+              {ratioMode === "pe" &&
+                activeStory === "median" &&
+                "Median P/E at peak windows. Dot-com leads, Big Tech stays mid-30s, pure AI sits around low-30s with a wide tail."}
               {usingFallback && (
                 <span
                   style={{
