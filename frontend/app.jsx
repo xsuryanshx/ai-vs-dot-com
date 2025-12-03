@@ -6,17 +6,21 @@ const { useEffect, useRef, useState } = React;
 
 // All paths are relative to /frontend/index.html
 const DATA_PATHS = {
-  dotcom: "Dotcom.csv",          // lives in frontend/
-  bigTech: "HighTech.xlsx",      // lives in frontend/
-  pureAi: "PureAI.xlsx",         // lives in frontend/
+  dotcom: "Dotcom.csv", // lives in frontend/
+  bigTech: "HighTech.xlsx", // lives in frontend/
+  pureAi: "PureAI.xlsx", // lives in frontend/
   macro: "combined-macrodata.csv", // lives in frontend/
-  pe: "pe-averages.csv",         // lives in frontend/
+  pe: "pe-averages.csv", // lives in frontend/
+  // Nasdaq-100 index-level series (CSV, 2 columns: date/quarter + value)
+  peIndexDotcom: "nasdaq100_pe_1996_2000.csv",
+  peIndexModern: "nasdaq100_pe_2022_2025.csv",
+  psIndexDotcom: "nasdaq100_ps_1996_2000.csv",
+  psIndexModern: "nasdaq100_ps_2022_2025.csv",
 };
 
 const THEME = {
   text: "#94a3b8",
   grid: "rgba(255, 255, 255, 0.06)",
-  tooltipBg: "rgba(255, 255, 255, 0.06)",
   tooltipBg: "rgba(15, 22, 41, 0.9)",
   tooltipBorder: "rgba(255, 255, 255, 0.1)",
 };
@@ -27,13 +31,7 @@ const SERIES_COLORS = {
   pureAi: { solid: "#38bdf8", fill: "rgba(56, 189, 248, 0.2)" },
 };
 
-const MACRO_COLORS = [
-  "#a78bfa",
-  "#38bdf8",
-  "#34d399",
-  "#f472b6",
-  "#fbbf24",
-];
+const MACRO_COLORS = ["#a78bfa", "#38bdf8", "#34d399", "#f472b6", "#fbbf24"];
 
 const MACRO_COLUMNS = [
   "Inflation",
@@ -193,6 +191,39 @@ async function loadPeAverages() {
   }
 }
 
+// Nasdaq-100 index-level time series loader (2-column CSV: quarter/date + value)
+async function loadIndexSeries(path, label) {
+  try {
+    const rows = await loadCsvAsObjects(path);
+    if (!rows.length) {
+      console.warn(`⚠️ Index series at ${path} is empty`);
+      return { labels: [], values: [] };
+    }
+    const keys = Object.keys(rows[0]);
+    if (keys.length < 2) {
+      console.warn(
+        `⚠️ Index series at ${path} does not have at least 2 columns`
+      );
+      return { labels: [], values: [] };
+    }
+    const labelKey = keys[0];
+    const valueKey = keys[1];
+
+    const labels = rows.map((r) => String(r[labelKey]));
+    const values = rows
+      .map((r) => toNumberOrNull(r[valueKey]))
+      .map((v) => (Number.isFinite(v) ? v : null));
+
+    console.log(
+      `✅ Loaded index series ${label || path}: ${labels.length} points`
+    );
+    return { labels, values };
+  } catch (e) {
+    console.error(`❌ Failed to load index series ${label || path}:`, e);
+    return { labels: [], values: [] };
+  }
+}
+
 // ============================================================
 // 2. Valuation helpers
 // ============================================================
@@ -229,8 +260,7 @@ function percentile(sortedArr, p) {
   const upper = Math.ceil(idx);
   if (lower === upper) return sortedArr[lower];
   return (
-    sortedArr[lower] * (1 - (idx - lower)) +
-    sortedArr[upper] * (idx - lower)
+    sortedArr[lower] * (1 - (idx - lower)) + sortedArr[upper] * (idx - lower)
   );
 }
 
@@ -272,6 +302,25 @@ function medianValue(values) {
   return nums.length % 2 === 0
     ? (nums[mid - 1] + nums[mid]) / 2
     : nums[mid];
+}
+
+function meanFinite(arr) {
+  const values = arr.filter((v) => Number.isFinite(v));
+  if (!values.length) return null;
+  const sum = values.reduce((s, v) => s + v, 0);
+  return sum / values.length;
+}
+
+function findPeakIndex(values) {
+  let peakIdx = -1;
+  let peakVal = -Infinity;
+  values.forEach((v, i) => {
+    if (Number.isFinite(v) && v > peakVal) {
+      peakVal = v;
+      peakIdx = i;
+    }
+  });
+  return peakIdx;
 }
 
 // ============================================================
@@ -346,9 +395,7 @@ function normalizeMacro(rows, columns, method, referenceRows) {
     });
   } else if (method === "Z-score (standardize)") {
     columns.forEach((col) => {
-      const values = ref
-        .map((r) => r[col])
-        .filter((v) => v != null);
+      const values = ref.map((r) => r[col]).filter((v) => v != null);
       const mean =
         values.reduce((s, v) => s + v, 0) / (values.length || 1);
       const variance =
@@ -429,9 +476,7 @@ function AvgPsLineChart({ dotcom, aiPure, aiBroad }) {
   ).sort((a, b) => a - b);
 
   const align = (series) => {
-    const map = new Map(
-      series.years.map((y, i) => [y, series.logVals[i]])
-    );
+    const map = new Map(series.years.map((y, i) => [y, series.logVals[i]]));
     return allYears.map((y) => map.get(y) ?? null);
   };
 
@@ -489,7 +534,9 @@ function AvgPsLineChart({ dotcom, aiPure, aiBroad }) {
             padding: 10,
             callbacks: {
               label: (c) =>
-                `${c.dataset.label}: ${Math.exp(c.raw).toFixed(1)}x P/S`,
+                `${c.dataset.label}: ${
+                  c.raw != null ? Math.exp(c.raw).toFixed(1) : "N/A"
+                }x P/S`,
             },
           },
         },
@@ -514,11 +561,7 @@ function AvgPeLineChart({ peRows, toggles }) {
   const canvasRef = useRef(null);
 
   const years = Array.from(
-    new Set(
-      peRows
-        .map((r) => r.Year)
-        .filter((y) => Number.isFinite(y))
-    )
+    new Set(peRows.map((r) => r.Year).filter((y) => Number.isFinite(y)))
   ).sort((a, b) => a - b);
 
   const rowByYear = new Map(peRows.map((r) => [r.Year, r]));
@@ -589,9 +632,7 @@ function AvgPeLineChart({ peRows, toggles }) {
             callbacks: {
               label: (c) => {
                 const val = Number(c.raw);
-                const display = Number.isFinite(val)
-                  ? val.toFixed(1)
-                  : "N/A";
+                const display = Number.isFinite(val) ? val.toFixed(1) : "N/A";
                 return `${c.dataset.label}: ${display}x P/E`;
               },
             },
@@ -619,13 +660,9 @@ function PeScatterChart({ peRows, toggles }) {
             const raw = r[key];
             if (raw === "" || raw == null) return null;
             const num = Number(raw);
-            return Number.isFinite(num)
-              ? { x: r.Year, y: num }
-              : null;
+            return Number.isFinite(num) ? { x: r.Year, y: num } : null;
           })
-          .filter(
-            (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)
-          )
+          .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
       : [];
 
   useChart(
@@ -964,6 +1001,373 @@ function MedianBarChart({ values, label }) {
   return <canvas ref={canvasRef} />;
 }
 
+// ================== Nasdaq-100 index charts (from Streamlit app) ====================
+
+function IndexMetricCards({ metricName, dotSeries, modernSeries }) {
+  if (
+    !dotSeries ||
+    !modernSeries ||
+    !dotSeries.values ||
+    !modernSeries.values
+  ) {
+    return null;
+  }
+
+  const dotVals = dotSeries.values.filter((v) => Number.isFinite(v));
+  const modernVals = modernSeries.values.filter((v) => Number.isFinite(v));
+  if (!dotVals.length || !modernVals.length) return null;
+
+  const peakDotcom = Math.max(...dotVals);
+  const peakModern = Math.max(...modernVals);
+  const avgDotcom = meanFinite(dotVals);
+  const avgModern = meanFinite(modernVals);
+
+  const format =
+    metricName === "P/E" ? (v) => v.toFixed(1) : (v) => v.toFixed(2);
+
+  const cardStyle = {
+    background:
+      "linear-gradient(145deg, rgba(15,23,42,0.9) 0%, rgba(30,41,59,0.95) 100%)",
+    borderRadius: 12,
+    padding: "14px 16px",
+    border: "1px solid rgba(148,163,184,0.3)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    boxShadow: "0 18px 35px rgba(15,23,42,0.6)",
+  };
+
+  const labelStyle = {
+    fontSize: "0.8rem",
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "#9ca3af",
+  };
+
+  const valueStyle = (color) => ({
+    fontFamily: "'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco",
+    fontSize: "1.9rem",
+    fontWeight: 700,
+    color,
+  });
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+        gap: 16,
+      }}
+    >
+      <div style={cardStyle}>
+        <div style={labelStyle}>Peak {metricName} (Dot-com)</div>
+        <div style={valueStyle(SERIES_COLORS.dotcom.solid)}>
+          {format(peakDotcom)}
+        </div>
+      </div>
+      <div style={cardStyle}>
+        <div style={labelStyle}>Peak {metricName} (Modern AI era)</div>
+        <div style={valueStyle(SERIES_COLORS.bigTech.solid)}>
+          {format(peakModern)}
+        </div>
+      </div>
+      <div style={cardStyle}>
+        <div style={labelStyle}>Average {metricName} (Dot-com)</div>
+        <div style={valueStyle(SERIES_COLORS.dotcom.solid)}>
+          {format(avgDotcom)}
+        </div>
+      </div>
+      <div style={cardStyle}>
+        <div style={labelStyle}>Average {metricName} (Modern AI era)</div>
+        <div style={valueStyle(SERIES_COLORS.bigTech.solid)}>
+          {format(avgModern)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IndexSideBySideChart({ metricName, dotSeries, modernSeries }) {
+  const dotRef = useRef(null);
+  const modernRef = useRef(null);
+
+  const buildConfig = (labels, values, label, color) => ({
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label,
+          data: values,
+          borderColor: color.solid,
+          backgroundColor: color.fill,
+          tension: 0.25,
+          borderWidth: 3,
+          pointRadius: 3,
+          pointHoverRadius: 6,
+          spanGaps: true,
+          fill: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          labels: { usePointStyle: true, boxWidth: 6 },
+        },
+        tooltip: {
+          backgroundColor: THEME.tooltipBg,
+          borderColor: THEME.tooltipBorder,
+          borderWidth: 1,
+        },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: "Quarter" },
+          grid: { display: false },
+        },
+        y: {
+          title: { display: true, text: `${metricName} Ratio` },
+        },
+      },
+    },
+  });
+
+  useChart(
+    dotRef,
+    () =>
+      buildConfig(
+        dotSeries?.labels || [],
+        dotSeries?.values || [],
+        "Dot-com Era (1996–2000)",
+        SERIES_COLORS.dotcom
+      ),
+    [JSON.stringify(dotSeries)]
+  );
+
+  useChart(
+    modernRef,
+    () =>
+      buildConfig(
+        modernSeries?.labels || [],
+        modernSeries?.values || [],
+        "Modern AI Era (2022–2025)",
+        SERIES_COLORS.bigTech
+      ),
+    [JSON.stringify(modernSeries)]
+  );
+
+  if (
+    !dotSeries ||
+    !modernSeries ||
+    !dotSeries.labels?.length ||
+    !modernSeries.labels?.length
+  ) {
+    return (
+      <div style={{ padding: "0.75rem", color: "#9ca3af" }}>
+        Nasdaq-100 index series not available for this metric.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        gap: 24,
+      }}
+    >
+      <div>
+        <div
+          style={{
+            marginBottom: 8,
+            fontSize: "0.9rem",
+            color: "var(--muted)",
+          }}
+        >
+          Dot-com Era (1996–2000)
+        </div>
+        <div className="chart-container" style={{ height: 280 }}>
+          <canvas ref={dotRef} />
+        </div>
+      </div>
+      <div>
+        <div
+          style={{
+            marginBottom: 8,
+            fontSize: "0.9rem",
+            color: "var(--muted)",
+          }}
+        >
+          Modern AI Era (2022–2025)
+        </div>
+        <div className="chart-container" style={{ height: 280 }}>
+          <canvas ref={modernRef} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IndexOverlayChart({ metricName, dotSeries, modernSeries }) {
+  const canvasRef = useRef(null);
+
+  useChart(
+    canvasRef,
+    () => {
+      if (
+        !dotSeries ||
+        !modernSeries ||
+        !dotSeries.values ||
+        !modernSeries.values
+      ) {
+        return {
+          type: "line",
+          data: { labels: [], datasets: [] },
+          options: { responsive: true },
+        };
+      }
+
+      const dotVals = dotSeries.values;
+      const modernVals = modernSeries.values;
+
+      const dotPeakIdx = findPeakIndex(dotVals);
+      const modernPeakIdx = findPeakIndex(modernVals);
+
+      if (dotPeakIdx === -1 || modernPeakIdx === -1) {
+        return {
+          type: "line",
+          data: { labels: [], datasets: [] },
+          options: { responsive: true },
+        };
+      }
+
+      const dotPositions = dotVals.map((_, i) => i - dotPeakIdx);
+      const modernPositions = modernVals.map((_, i) => i - modernPeakIdx);
+
+      const minX = Math.min(
+        ...dotPositions,
+        ...modernPositions
+      );
+      const maxX = Math.max(
+        ...dotPositions,
+        ...modernPositions
+      );
+
+      const dotPoints = dotVals
+        .map((v, i) =>
+          Number.isFinite(v)
+            ? { x: dotPositions[i], y: v }
+            : null
+        )
+        .filter(Boolean);
+      const modernPoints = modernVals
+        .map((v, i) =>
+          Number.isFinite(v)
+            ? { x: modernPositions[i], y: v }
+            : null
+        )
+        .filter(Boolean);
+
+      const peakLinePlugin = {
+        id: "peakLine",
+        afterDraw(chart) {
+          const xScale = chart.scales.x;
+          const yScale = chart.scales.y;
+          if (!xScale || !yScale) return;
+          const x = xScale.getPixelForValue(0);
+          const ctx = chart.ctx;
+          ctx.save();
+          ctx.strokeStyle = "rgba(148, 163, 184, 0.9)";
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(x, yScale.top);
+          ctx.lineTo(x, yScale.bottom);
+          ctx.stroke();
+          ctx.restore();
+        },
+      };
+
+      return {
+        type: "line",
+        data: {
+          datasets: [
+            {
+              label: "Dot-com Era (1996–2000)",
+              data: dotPoints,
+              borderColor: SERIES_COLORS.dotcom.solid,
+              backgroundColor: SERIES_COLORS.dotcom.fill,
+              tension: 0.25,
+              borderWidth: 3,
+              pointRadius: 4,
+              pointHoverRadius: 7,
+              fill: false,
+            },
+            {
+              label: "Modern AI Era (2022–2025)",
+              data: modernPoints,
+              borderColor: SERIES_COLORS.bigTech.solid,
+              backgroundColor: SERIES_COLORS.bigTech.fill,
+              tension: 0.25,
+              borderWidth: 3,
+              pointRadius: 4,
+              pointHoverRadius: 7,
+              fill: false,
+            },
+          ],
+        },
+        plugins: [peakLinePlugin],
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: {
+              position: "top",
+              labels: { usePointStyle: true, boxWidth: 6 },
+            },
+            tooltip: {
+              backgroundColor: THEME.tooltipBg,
+              borderColor: THEME.tooltipBorder,
+              borderWidth: 1,
+            },
+          },
+          scales: {
+            x: {
+              type: "linear",
+              min: minX,
+              max: maxX,
+              ticks: {
+                stepSize: 1,
+                callback: (v) => {
+                  if (v === 0) return "PEAK";
+                  if (v < 0) return `${Math.abs(v)}Q before peak`;
+                  return `${v}Q after peak`;
+                },
+              },
+              grid: { display: true },
+            },
+            y: {
+              title: { display: true, text: `${metricName} Ratio` },
+            },
+          },
+        },
+      };
+    },
+    [JSON.stringify(dotSeries), JSON.stringify(modernSeries), metricName]
+  );
+
+  return (
+    <div className="chart-container" style={{ height: 320 }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
+}
+
 // ================== Macro chart ============================
 
 function MacroLineChart({ series, yTitle }) {
@@ -1041,6 +1445,12 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [usingFallback, setUsingFallback] = useState(false);
 
+  // Nasdaq-100 index-level state
+  const [peIndexDotcom, setPeIndexDotcom] = useState({ labels: [], values: [] });
+  const [peIndexModern, setPeIndexModern] = useState({ labels: [], values: [] });
+  const [psIndexDotcom, setPsIndexDotcom] = useState({ labels: [], values: [] });
+  const [psIndexModern, setPsIndexModern] = useState({ labels: [], values: [] });
+
   const [cohortToggles, setCohortToggles] = useState({
     dotcom: true,
     aiPure: true,
@@ -1063,21 +1473,23 @@ function App() {
     async function init() {
       setLoading(true);
       try {
-        const [dotPanel, purePanel, broadPanel, mRows, peRows] = await Promise.all([
-          loadDotcomPanel(),
-          loadExcelPanel(
-            DATA_PATHS.bigTech,
-            [2020, 2021, 2022, 2023, 2024, 2025],
-            "HighTech.xlsx (Big Tech AI)"
-          ),
-          loadExcelPanel(
-            DATA_PATHS.pureAi,
-            [2020, 2021, 2022, 2023, 2024, 2025],
-            "PureAI.xlsx (Pure-play AI)"
-          ),
-          loadMacrodata(),
-          loadPeAverages(),
-        ]);
+        // Core cohort + macro + P/E averages
+        const [dotPanel, purePanel, broadPanel, mRows, peRows] =
+          await Promise.all([
+            loadDotcomPanel(),
+            loadExcelPanel(
+              DATA_PATHS.bigTech,
+              [2020, 2021, 2022, 2023, 2024, 2025],
+              "HighTech.xlsx (Big Tech AI)"
+            ),
+            loadExcelPanel(
+              DATA_PATHS.pureAi,
+              [2020, 2021, 2022, 2023, 2024, 2025],
+              "PureAI.xlsx (Pure-play AI)"
+            ),
+            loadMacrodata(),
+            loadPeAverages(),
+          ]);
 
         if (dotPanel.length) setDotcom(dotPanel);
         if (purePanel.length) setAiPure(purePanel);
@@ -1102,6 +1514,24 @@ function App() {
           );
           setMacroRange([0, Math.max(mRows.length - 1, 0)]);
         }
+
+        // Nasdaq-100 index-level series (always safe, loader never throws)
+        const [
+          peIdxDot,
+          peIdxMod,
+          psIdxDot,
+          psIdxMod,
+        ] = await Promise.all([
+          loadIndexSeries(DATA_PATHS.peIndexDotcom, "P/E Dot-com"),
+          loadIndexSeries(DATA_PATHS.peIndexModern, "P/E Modern"),
+          loadIndexSeries(DATA_PATHS.psIndexDotcom, "P/S Dot-com"),
+          loadIndexSeries(DATA_PATHS.psIndexModern, "P/S Modern"),
+        ]);
+
+        setPeIndexDotcom(peIdxDot);
+        setPeIndexModern(peIdxMod);
+        setPsIndexDotcom(psIdxDot);
+        setPsIndexModern(psIdxMod);
       } catch (e) {
         console.error("Data load failed:", e);
       } finally {
@@ -1153,7 +1583,9 @@ function App() {
   );
 
   const peDotMed = cohortToggles.dotcom ? medianValue(peDotPeaks) : null;
-  const peBigTechMed = cohortToggles.aiPure ? medianValue(peBigTechPeaks) : null;
+  const peBigTechMed = cohortToggles.aiPure
+    ? medianValue(peBigTechPeaks)
+    : null;
   const pePureMed = cohortToggles.aiBroad ? medianValue(pePurePeaks) : null;
 
   const macroFiltered = macroRows.slice(macroRange[0], macroRange[1] + 1);
@@ -1351,6 +1783,12 @@ function App() {
     },
   };
 
+  const metricName = ratioMode === "ps" ? "P/S" : "P/E";
+  const activeIndexDotcom =
+    ratioMode === "ps" ? psIndexDotcom : peIndexDotcom;
+  const activeIndexModern =
+    ratioMode === "ps" ? psIndexModern : peIndexModern;
+
   return (
     <div className="page">
       <div className="hero">
@@ -1389,6 +1827,7 @@ function App() {
         </div>
       </div>
 
+      {/* STORY SECTION (existing P/S + P/E cohort graphs) */}
       <div className="story-section">
         <div className="section-header">
           <h2>The Data Story</h2>
@@ -1579,6 +2018,56 @@ function App() {
         </div>
       </div>
 
+      {/* NEW NASDAQ-100 INDEX-LEVEL SECTION (from Streamlit app) */}
+      <div className="story-section">
+        <div className="section-header">
+          <h2>Nasdaq-100 Index Valuation Metrics</h2>
+          <p className="section-subtitle">
+            Comparing the dot-com bubble (1996–2000) vs the modern AI era
+            (2022–2025) using index-level {metricName} ratios.
+          </p>
+        </div>
+
+        <div className="card chart-card" style={{ marginBottom: 24 }}>
+          <IndexMetricCards
+            metricName={metricName}
+            dotSeries={activeIndexDotcom}
+            modernSeries={activeIndexModern}
+          />
+        </div>
+
+        <div
+          className="story-grid"
+          style={{ gridTemplateColumns: "1.5fr 1fr", gap: 24 }}
+        >
+          <div className="card chart-card">
+            <div className="chart-container">
+              <IndexSideBySideChart
+                metricName={metricName}
+                dotSeries={activeIndexDotcom}
+                modernSeries={activeIndexModern}
+              />
+            </div>
+            <div className="chart-subtitle">
+              Side-by-side view of Nasdaq-100 index {metricName} during the
+              dot-com bubble vs the recent AI cycle.
+            </div>
+          </div>
+          <div className="card chart-card">
+            <IndexOverlayChart
+              metricName={metricName}
+              dotSeries={activeIndexDotcom}
+              modernSeries={activeIndexModern}
+            />
+            <div className="chart-subtitle">
+              Overlay comparison with both eras aligned so their peak index
+              valuations sit on the same PEAK line (0 on the x-axis).
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* MACRO SECTION (unchanged, sits below everything) */}
       <div className="macro-section">
         <div className="section-header">
           <h2>Macroeconomic Context</h2>
