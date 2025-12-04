@@ -34,6 +34,14 @@ const SERIES_COLORS = {
 
 const MACRO_COLORS = ["#a78bfa", "#38bdf8", "#34d399", "#f472b6", "#fbbf24"];
 
+const MACRO_COLOR_MAP = {
+  Inflation: "#a78bfa",
+  Unemployment: "#38bdf8",
+  "Interest Rate": "#34d399",
+  "GDP Yearly Growth": "#f472b6",
+  "NASDAQ Yearly Growth": "#fbbf24",
+};
+
 const MACRO_COLUMNS = [
   "Inflation",
   "Unemployment",
@@ -41,6 +49,135 @@ const MACRO_COLUMNS = [
   "GDP Yearly Growth",
   "NASDAQ Yearly Growth",
 ];
+
+// Clamp value to the provided range (numeric guard only).
+function clamp(value, min, max) {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+/**
+ * DualRangeSlider lets the user drag two thumbs over one shared track
+ * to update start/end boundaries.
+ */
+function DualRangeSlider({ min, max, values, onChange }) {
+  const sliderRef = useRef(null);
+  const [dragging, setDragging] = useState(null);
+
+  useEffect(() => {
+    if (!dragging || !sliderRef.current) return undefined;
+
+    const handleMove = (event) => {
+      if (!sliderRef.current) return;
+      const rect = sliderRef.current.getBoundingClientRect();
+      const relativeX = (event.clientX - rect.left) / rect.width;
+      const range = max - min || 1;
+      const raw = clamp(Math.round(min + relativeX * range), min, max);
+      if (dragging === "start") {
+        const nextStart = Math.min(raw, values[1]);
+        onChange([nextStart, values[1]]);
+      } else {
+        const nextEnd = Math.max(raw, values[0]);
+        onChange([values[0], nextEnd]);
+      }
+    };
+
+    const handleUp = () => setDragging(null);
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+  }, [dragging, min, max, values, onChange]);
+
+  const span = Math.max(max - min, 1);
+  const startPct = ((values[0] - min) / span) * 100;
+  const endPct = ((values[1] - min) / span) * 100;
+
+  const handleCommon = {
+    position: "absolute",
+    top: "50%",
+    transform: "translate(-50%, -50%)",
+    width: 16,
+    height: 16,
+    borderRadius: "50%",
+    border: "2px solid var(--accent)",
+    background: "#0f1629",
+    cursor: "pointer",
+  };
+
+  return (
+    <div
+      ref={sliderRef}
+      style={{
+        position: "relative",
+        height: 40,
+        marginTop: 12,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: "50% 0 auto",
+          transform: "translateY(-50%)",
+          height: 6,
+          borderRadius: 999,
+          background: "rgba(148, 163, 184, 0.4)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: "50% auto 0",
+          transform: "translateY(-50%)",
+          height: 6,
+          borderRadius: 999,
+          left: `${startPct}%`,
+          right: `${100 - endPct}%`,
+          background: "var(--accent)",
+        }}
+      />
+      <button
+        type="button"
+        aria-label="Start range"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          setDragging("start");
+        }}
+        style={{ ...handleCommon, left: `${startPct}%`, zIndex: 2 }}
+      />
+      <button
+        type="button"
+        aria-label="End range"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          setDragging("end");
+        }}
+        style={{ ...handleCommon, left: `${endPct}%` }}
+      />
+    </div>
+  );
+}
+
+const ZOOM_SELECT_STYLE = {
+  fontSize: "1rem",
+  padding: "4px 8px",
+  background: "transparent",
+  border: "none",
+  color: "var(--muted)",
+  cursor: "pointer",
+  outline: "none",
+  fontWeight: 600,
+  textAlign: "left",
+};
+
+const ZOOM_OPTION_STYLE = {
+  background: "#0f1629",
+  color: "#e2e8f0",
+};
 
 // Common line style for ALL line charts
 const LINE_STYLE = {
@@ -457,6 +594,16 @@ function formatDateLabel(date) {
     year: "numeric",
     month: "short",
   }).format(date);
+}
+
+// Formats macro tooltip numbers for readability.
+function formatMacroTooltipValue(value) {
+  if (value == null) return "N/A";
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "N/A";
+  return new Intl.NumberFormat("en", {
+    maximumFractionDigits: 2,
+  }).format(num);
 }
 
 // ============================================================
@@ -1434,6 +1581,11 @@ function MacroLineChart({ series, yTitle }) {
                 items[0]
                   ? formatDateLabel(new Date(items[0].raw.x))
                   : "",
+              label: (item) => {
+                const actual = item.raw?.original;
+                const formatted = formatMacroTooltipValue(actual);
+                return `${item.dataset.label}: ${formatted}%`;
+              },
             },
           },
         },
@@ -1491,8 +1643,8 @@ function App() {
   const [macroNormalization, setMacroNormalization] = useState(
     "Z-score (standardize)"
   );
-  const [macroZoom, setMacroZoom] = useState("AI Boom (2022–2025)");
-  const [macroZoom2, setMacroZoom2] = useState("Dot-com Bubble (1995–2002)");
+  const [macroZoom, setMacroZoom] = useState("Dot-com Bubble (1995–2002)");
+  const [macroZoom2, setMacroZoom2] = useState("AI Boom (2022–2025)");
   const [macroStory, setMacroStory] = useState(null);
 
   useEffect(() => {
@@ -1624,18 +1776,22 @@ function App() {
   );
 
   const buildSeries = (data, normData) =>
-    macroSelectedCols.map((col, i) => ({
-      label: col,
-      color: MACRO_COLORS[i % MACRO_COLORS.length],
-      data: data
-        .map((row, idx) => {
-          const y = normData[idx]?.[col];
-          return y != null
-            ? { x: row.Date.getTime(), y, original: row[col] }
-            : null;
-        })
-        .filter(Boolean),
-    }));
+    macroSelectedCols.map((col, i) => {
+      const color =
+        MACRO_COLOR_MAP[col] || MACRO_COLORS[i % MACRO_COLORS.length];
+      return {
+        label: col,
+        color,
+        data: data
+          .map((row, idx) => {
+            const y = normData[idx]?.[col];
+            return y != null
+              ? { x: row.Date.getTime(), y, original: row[col] }
+              : null;
+          })
+          .filter(Boolean),
+      };
+    });
 
   const macroSeries = buildSeries(macroFiltered, macroNormData);
 
@@ -1714,8 +1870,8 @@ function App() {
   const resetView = () => {
     setMacroStory(null);
     setMacroNormalization("Z-score (standardize)");
-    setMacroZoom("AI Boom (2022–2025)");
-    setMacroZoom2("Dot-com Bubble (1995–2002)");
+    setMacroZoom("Dot-com Bubble (1995–2002)");
+    setMacroZoom2("AI Boom (2022–2025)");
     if (macroRows.length > 0) {
       setMacroRange([0, Math.max(macroRows.length - 1, 0)]);
       const allCols = MACRO_COLUMNS.filter((c) => c in macroRows[0]);
@@ -2230,35 +2386,17 @@ function App() {
                       : "End"}
                   </span>
                 </div>
-                <input
-                  type="range"
+                <DualRangeSlider
                   min={0}
                   max={Math.max(macroRows.length - 1, 0)}
-                  value={macroRange[0]}
-                  onChange={(e) =>
-                    setMacroRange([
-                      Math.min(
-                        Number(e.target.value),
-                        macroRange[1]
-                      ),
-                      macroRange[1],
-                    ])
-                  }
-                />
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(macroRows.length - 1, 0)}
-                  value={macroRange[1]}
-                  onChange={(e) =>
-                    setMacroRange([
-                      macroRange[0],
-                      Math.max(
-                        Number(e.target.value),
-                        macroRange[0]
-                      ),
-                    ])
-                  }
+                  values={macroRange}
+                  onChange={(nextRange) => {
+                    const sorted = [
+                      Math.min(nextRange[0], nextRange[1]),
+                      Math.max(nextRange[0], nextRange[1]),
+                    ];
+                    setMacroRange(sorted);
+                  }}
                 />
               </div>
 
@@ -2299,18 +2437,6 @@ function App() {
                 </div>
               </div>
 
-              <div className="field">
-                <label>Compare Era</label>
-                <select
-                  value={macroZoom}
-                  onChange={(e) => setMacroZoom(e.target.value)}
-                >
-                  {Object.keys(zoomRanges).map((z) => (
-                    <option key={z}>{z}</option>
-                  ))}
-                  <option>None</option>
-                </select>
-              </div>
             </div>
           </div>
 
@@ -2352,15 +2478,32 @@ function App() {
                   className="card chart-card"
                   style={{ flex: 1, minWidth: 300 }}
                 >
-                  <h3
-                    style={{
-                      margin: "0 0 10px 0",
-                      fontSize: "1rem",
-                      color: "var(--muted)",
-                    }}
-                  >
-                    Zoom: {macroZoom}
-                  </h3>
+                  <div style={{ marginBottom: 10 }}>
+                    <select
+                      value={macroZoom}
+                      onChange={(e) => setMacroZoom(e.target.value)}
+                      style={ZOOM_SELECT_STYLE}
+                    >
+                      <option disabled value="">
+                        Select Era...
+                      </option>
+                      {Object.keys(zoomRanges).map((z) => (
+                        <option
+                          key={z}
+                          value={z}
+                          style={ZOOM_OPTION_STYLE}
+                        >
+                          {z}
+                        </option>
+                      ))}
+                      <option
+                        value="None"
+                        style={ZOOM_OPTION_STYLE}
+                      >
+                        None
+                      </option>
+                    </select>
+                  </div>
                   <div
                     className="chart-container"
                     style={{ height: 320 }}
@@ -2382,37 +2525,23 @@ function App() {
                     <select
                       value={macroZoom2}
                       onChange={(e) => setMacroZoom2(e.target.value)}
-                      style={{
-                        fontSize: "1rem",
-                        padding: "4px 8px",
-                        background: "transparent",
-                        border: "none",
-                        color: "var(--muted)",
-                        cursor: "pointer",
-                        outline: "none",
-                        fontWeight: 600,
-                        textAlign: "left",
-                      }}
+                      style={ZOOM_SELECT_STYLE}
                     >
-                      <option disabled>Select Era...</option>
+                      <option disabled value="">
+                        Select Era...
+                      </option>
                       {Object.keys(zoomRanges).map((z) => (
                         <option
                           key={z}
                           value={z}
-                          style={{
-                            background: "#0f1629",
-                            color: "#e2e8f0",
-                          }}
+                          style={ZOOM_OPTION_STYLE}
                         >
                           {z}
                         </option>
                       ))}
                       <option
                         value="None"
-                        style={{
-                          background: "#0f1629",
-                          color: "#e2e8f0",
-                        }}
+                        style={ZOOM_OPTION_STYLE}
                       >
                         None
                       </option>
