@@ -668,15 +668,6 @@ function PeScatterChart({ peRows, toggles, dotcom, aiPure, aiBroad }) {
     PureAI: estimateEpsByYear(aiBroad || []),
   };
 
-  const formatNumber = (val) => {
-    const num = Number(val);
-    if (!Number.isFinite(num)) return "N/A";
-    if (num >= 1000)
-      return num.toLocaleString("en-US", { maximumFractionDigits: 0 });
-    if (num >= 10) return num.toLocaleString("en-US", { maximumFractionDigits: 1 });
-    return num.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  };
-
   const makePoints = (key, epsMap, enabled) =>
     enabled
       ? (peRows || [])
@@ -688,45 +679,56 @@ function PeScatterChart({ peRows, toggles, dotcom, aiPure, aiBroad }) {
             }
             const sharePrice = peVal * eps;
             if (!Number.isFinite(sharePrice) || sharePrice <= 0) return null;
-            return { x: sharePrice, y: eps, year: r.Year };
+            return {
+              x: Math.log(sharePrice),
+              y: Math.log(eps),
+              rawPrice: sharePrice,
+              rawEps: eps,
+              year: r.Year,
+            };
           })
           .filter(Boolean)
       : [];
+
+  const dotPoints = makePoints("Dotcom", epsMaps.Dotcom, toggles.dotcom);
+  const bigPoints = makePoints("BigTechAI", epsMaps.BigTechAI, toggles.aiPure);
+  const purePoints = makePoints("PureAI", epsMaps.PureAI, toggles.aiBroad);
+  const datasets = [
+    {
+      label: "Dot-com",
+      data: dotPoints,
+      backgroundColor: SERIES_COLORS.dotcom.fill,
+      borderColor: SERIES_COLORS.dotcom.solid,
+      borderWidth: 1,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+    },
+    {
+      label: "Big Tech AI",
+      data: bigPoints,
+      backgroundColor: SERIES_COLORS.bigTech.fill,
+      borderColor: SERIES_COLORS.bigTech.solid,
+      borderWidth: 1,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+    },
+    {
+      label: "Pure-play AI",
+      data: purePoints,
+      backgroundColor: SERIES_COLORS.pureAi.fill,
+      borderColor: SERIES_COLORS.pureAi.solid,
+      borderWidth: 1,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+    },
+  ];
 
   useChart(
     canvasRef,
     () => ({
       type: "scatter",
       data: {
-        datasets: [
-          {
-            label: "Dot-com",
-            data: makePoints("Dotcom", epsMaps.Dotcom, toggles.dotcom),
-            backgroundColor: SERIES_COLORS.dotcom.fill,
-            borderColor: SERIES_COLORS.dotcom.solid,
-            borderWidth: 1,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-          },
-          {
-            label: "Big Tech AI",
-            data: makePoints("BigTechAI", epsMaps.BigTechAI, toggles.aiPure),
-            backgroundColor: SERIES_COLORS.bigTech.fill,
-            borderColor: SERIES_COLORS.bigTech.solid,
-            borderWidth: 1,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-          },
-          {
-            label: "Pure-play AI",
-            data: makePoints("PureAI", epsMaps.PureAI, toggles.aiBroad),
-            backgroundColor: SERIES_COLORS.pureAi.fill,
-            borderColor: SERIES_COLORS.pureAi.solid,
-            borderWidth: 1,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-          },
-        ],
+        datasets,
       },
       options: {
         responsive: true,
@@ -737,38 +739,38 @@ function PeScatterChart({ peRows, toggles, dotcom, aiPure, aiBroad }) {
             backgroundColor: THEME.tooltipBg,
             borderColor: THEME.tooltipBorder,
             borderWidth: 1,
-            callbacks: {
-              label: (c) => {
-                const price = formatNumber(c.raw.x);
-                const eps = formatNumber(c.raw.y);
-                return `${c.dataset.label}: $${price} price, $${eps} EPS (Year ${c.raw.year})`;
+              callbacks: {
+                label: (c) => {
+                  const price = Number(c.raw.rawPrice);
+                  const eps = Number(c.raw.rawEps);
+                  const fmt = (v) =>
+                  Number.isFinite(v)
+                    ? v.toLocaleString("en-US", { maximumFractionDigits: 2 })
+                    : "N/A";
+                return `${c.dataset.label}: $${fmt(price)} price, $${fmt(
+                  eps
+                )} EPS (log price=${c.raw.x.toFixed(
+                  2
+                )}, log EPS=${c.raw.y.toFixed(2)}, Year ${c.raw.year})`;
               },
             },
           },
         },
         scales: {
           x: {
-            type: "logarithmic",
-            title: { display: true, text: "Share price" },
+            title: { display: true, text: "log(Share price)" },
             grid: { display: false },
-            ticks: { callback: (v) => formatNumber(v) },
           },
           y: {
-            type: "logarithmic",
-            title: { display: true, text: "EPS (earnings per share)" },
-            ticks: { callback: (v) => formatNumber(v) },
+            title: { display: true, text: "log(EPS)" },
           },
         },
       },
     }),
     [
-      JSON.stringify(peRows),
-      toggles.dotcom,
-      toggles.aiPure,
-      toggles.aiBroad,
-      dotcom.length,
-      aiPure.length,
-      aiBroad.length,
+      JSON.stringify(dotPoints),
+      JSON.stringify(bigPoints),
+      JSON.stringify(purePoints),
     ]
   );
 
@@ -1790,11 +1792,11 @@ function App() {
       },
       scale: {
         title: "Share price vs EPS (earnings per share)",
-        body: "Share price against EPS on a log scale to see how each cohort prices profits. Big Tech leans on hefty earnings, dot-com points cluster lower, and pure AI rockets in the later years.",
+        body: "Log(share price) vs log(EPS) shows how hard each cohort prices its profits. Big Tech stays anchored up-right on earnings heft, dot-com sits mid-pack, and pure AI sweeps upward late in a dot-com-like lane.",
         bullets: [
-          "Dot-com: low-to-mid EPS keeps most points low and left.",
-          "Big Tech AI: higher EPS lifts the cloud up-right, even with calmer pricing.",
-          "Pure-play AI: late surge pulls price faster than EPS, looking closer to dot-com than Big Tech.",
+          "Dot-com: mid-cluster on the log grid priced above its EPS but not the top.",
+          "Big Tech AI: higher log EPS and price keep the cloud up-right with steadier spread.",
+          "Pure-play AI: late lift drifts toward the dot-com slope before kicking higher.",
         ],
       },
       median: {
@@ -2035,7 +2037,7 @@ function App() {
                 "Comparing Market Cap vs Revenue on a log-log scale. Big Tech aligns with scale; Dot-com scattered."}
               {ratioMode === "pe" &&
                 activeStory === "scale" &&
-                "Log scatter of share price vs EPS shows dot-com clustered low, Big Tech buoyed by larger earnings, and pure AI drifting toward dot-com territory before leaping late."}
+                "Log scatter of share price vs EPS: dot-com clusters mid-low, Big Tech sits up-right on stronger earnings, and pure AI rides the dot-com slope before leaping late."}
               {ratioMode === "ps" &&
                 activeStory === "median" &&
                 "Median Price-to-Sales ratio at the height of each era. Big Tech valuations remain grounded."}
