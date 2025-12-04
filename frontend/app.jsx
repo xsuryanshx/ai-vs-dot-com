@@ -57,6 +57,207 @@ function clamp(value, min, max) {
   return value;
 }
 
+// ============================================================
+// Financial Term Tooltip Component
+// ============================================================
+
+const FINANCIAL_DEFINITIONS = {
+  "P/S": {
+    term: "Price-to-Sales (P/S) Ratio",
+    definition: "A valuation metric that compares a company's market capitalization to its annual revenue. It shows how much investors are willing to pay for each dollar of sales. A lower P/S ratio may indicate a stock is undervalued, while a higher ratio suggests investors expect strong growth. Unlike P/E ratios, P/S can be used for companies that aren't yet profitable.",
+  },
+  "P/E": {
+    term: "Price-to-Earnings (P/E) Ratio",
+    definition: "A valuation metric that compares a company's share price to its earnings per share (EPS). It indicates how much investors are willing to pay for each dollar of earnings. A high P/E ratio suggests investors expect strong future growth, while a low P/E may indicate undervaluation or poor growth prospects. P/E ratios are most meaningful for profitable companies.",
+  },
+  "NASDAQ-100": {
+    term: "NASDAQ-100 Index",
+    definition: "A stock market index of the 100 largest non-financial companies listed on the NASDAQ stock exchange. It includes major technology companies like Apple, Microsoft, Amazon, and Google. The index is weighted by market capitalization and serves as a benchmark for the performance of large-cap tech stocks. It excludes financial companies and focuses on growth-oriented sectors.",
+  },
+  "Nasdaq-100": {
+    term: "NASDAQ-100 Index",
+    definition: "A stock market index of the 100 largest non-financial companies listed on the NASDAQ stock exchange. It includes major technology companies like Apple, Microsoft, Amazon, and Google. The index is weighted by market capitalization and serves as a benchmark for the performance of large-cap tech stocks. It excludes financial companies and focuses on growth-oriented sectors.",
+  },
+  "Market Cap": {
+    term: "Market Capitalization",
+    definition: "The total dollar market value of a company's outstanding shares of stock. It's calculated by multiplying the current share price by the total number of outstanding shares. Market cap is used to categorize companies as large-cap, mid-cap, or small-cap, and reflects what investors collectively believe a company is worth.",
+  },
+  "market cap": {
+    term: "Market Capitalization",
+    definition: "The total dollar market value of a company's outstanding shares of stock. It's calculated by multiplying the current share price by the total number of outstanding shares. Market cap is used to categorize companies as large-cap, mid-cap, or small-cap, and reflects what investors collectively believe a company is worth.",
+  },
+  "EPS": {
+    term: "Earnings Per Share (EPS)",
+    definition: "A company's profit divided by the number of outstanding shares. It represents the portion of a company's profit allocated to each share of common stock. Higher EPS generally indicates greater profitability. EPS is a key metric used in calculating the Price-to-Earnings (P/E) ratio and helps investors assess a company's profitability on a per-share basis.",
+  },
+  "Revenue": {
+    term: "Revenue",
+    definition: "The total amount of money a company receives from its business activities, such as selling products or services, before subtracting expenses. Also called 'sales' or 'top line,' revenue is a fundamental measure of a company's business performance and growth. It's used in calculating metrics like Price-to-Sales (P/S) ratio.",
+  },
+  "revenue": {
+    term: "Revenue",
+    definition: "The total amount of money a company receives from its business activities, such as selling products or services, before subtracting expenses. Also called 'sales' or 'top line,' revenue is a fundamental measure of a company's business performance and growth. It's used in calculating metrics like Price-to-Sales (P/S) ratio.",
+  },
+  "revenues": {
+    term: "Revenue",
+    definition: "The total amount of money a company receives from its business activities, such as selling products or services, before subtracting expenses. Also called 'sales' or 'top line,' revenue is a fundamental measure of a company's business performance and growth. It's used in calculating metrics like Price-to-Sales (P/S) ratio.",
+  },
+};
+
+function FinancialTooltip({ term, children }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const tooltipRef = useRef(null);
+
+  const definition = FINANCIAL_DEFINITIONS[term];
+  if (!definition) return <>{children}</>;
+
+  return (
+    <span
+      style={{
+        position: "relative",
+        display: "inline-block",
+        cursor: "help",
+        borderBottom: "1px dotted rgba(148, 163, 184, 0.5)",
+      }}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+      ref={tooltipRef}
+    >
+      {children}
+      {showTooltip && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "100%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            marginBottom: "8px",
+            width: "320px",
+            padding: "12px 16px",
+            backgroundColor: THEME.tooltipBg,
+            border: `1px solid ${THEME.tooltipBorder}`,
+            borderRadius: "8px",
+            fontSize: "0.875rem",
+            lineHeight: "1.5",
+            color: "#e2e8f0",
+            zIndex: 1000,
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 600,
+              color: "#fff",
+              marginBottom: "6px",
+              fontSize: "0.9rem",
+            }}
+          >
+            {definition.term}
+          </div>
+          <div style={{ color: "#cbd5e1" }}>{definition.definition}</div>
+          <div
+            style={{
+              position: "absolute",
+              bottom: "-6px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: 0,
+              height: 0,
+              borderLeft: "6px solid transparent",
+              borderRight: "6px solid transparent",
+              borderTop: `6px solid ${THEME.tooltipBg}`,
+            }}
+          />
+        </div>
+      )}
+    </span>
+  );
+}
+
+// Helper function to render text with financial term tooltips
+function renderTextWithTooltips(text) {
+  if (typeof text !== "string") return text;
+  
+  // Map of term variations to canonical term keys (for lookup)
+  const termMap = {
+    "market cap": "Market Cap",
+    "revenue": "Revenue",
+    "revenues": "Revenue",
+    "nasdaq-100": "NASDAQ-100",
+  };
+  
+  // Get all terms to search for (including variations)
+  const allTerms = Object.keys(FINANCIAL_DEFINITIONS);
+  const parts = [];
+  let lastIndex = 0;
+  
+  // Find all occurrences of financial terms (case-insensitive)
+  const matches = [];
+  allTerms.forEach((term) => {
+    // Escape special regex characters
+    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Create regex that matches word boundaries or start/end of string
+    // Handle special cases like "P/S" and "P/E" which don't have word boundaries
+    const pattern = term.includes("/") 
+      ? `\\b${escapedTerm}\\b|${escapedTerm}(?=\\s|$|,|\\.|\\?|!|;|:|\\))`
+      : `\\b${escapedTerm}\\b`;
+    const regex = new RegExp(pattern, "gi");
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      // Use canonical term key if available, otherwise use the matched term
+      const canonicalTerm = termMap[term.toLowerCase()] || term;
+      // Only add if the canonical term exists in definitions
+      if (FINANCIAL_DEFINITIONS[canonicalTerm]) {
+        matches.push({
+          term: canonicalTerm,
+          index: match.index,
+          length: match[0].length,
+          text: match[0],
+        });
+      }
+    }
+  });
+  
+  // Sort matches by index
+  matches.sort((a, b) => a.index - b.index);
+  
+  // Remove overlapping matches (keep the first one)
+  const filteredMatches = [];
+  matches.forEach((match) => {
+    const overlaps = filteredMatches.some(
+      (m) =>
+        match.index < m.index + m.length &&
+        match.index + match.length > m.index
+    );
+    if (!overlaps) {
+      filteredMatches.push(match);
+    }
+  });
+  
+  // Build the JSX
+  filteredMatches.forEach((match) => {
+    // Add text before the match
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+    // Add the tooltip-wrapped term
+    parts.push(
+      <FinancialTooltip key={`${match.index}-${match.term}`} term={match.term}>
+        {match.text}
+      </FinancialTooltip>
+    );
+    lastIndex = match.index + match.length;
+  });
+  
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+  
+  return parts.length > 0 ? <>{parts}</> : text;
+}
+
 /**
  * DualRangeSlider lets the user drag two thumbs over one shared track
  * to update start/end boundaries.
@@ -246,6 +447,17 @@ function toNumberOrNull(value) {
   if (value === "" || value == null) return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+}
+
+// Extract unique company names from panel data
+function extractCompanyNames(panel) {
+  const companies = new Set();
+  panel.forEach((record) => {
+    if (record.Company && record.Company.trim()) {
+      companies.add(record.Company.trim());
+    }
+  });
+  return Array.from(companies).sort();
 }
 
 // Convert "Company/Metric/year columns" → tidy panel
@@ -636,6 +848,107 @@ function useChart(canvasRef, configFactory, deps) {
   }, deps);
 }
 
+// ================== Collapsible Log Scale Note Component =================
+
+function CollapsibleLogNote({ children }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  return (
+    <div style={{ marginTop: "8px" }}>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{
+          background: "none",
+          border: "none",
+          color: "#9ca3af",
+          fontSize: "0.7rem",
+          cursor: "pointer",
+          padding: "4px 0",
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          fontFamily: "inherit",
+        }}
+      >
+        <span style={{ fontSize: "0.75rem" }}>ℹ️</span>
+        <span style={{ textDecoration: "underline" }}>
+          {isExpanded ? "Hide note about log scale" : "Show note about log scale"}
+        </span>
+      </button>
+      {isExpanded && (
+        <div
+          style={{
+            fontSize: "0.7rem",
+            color: "#9ca3af",
+            fontStyle: "italic",
+            marginTop: "6px",
+            padding: "6px 10px",
+            background: "rgba(148, 163, 184, 0.1)",
+            borderRadius: "6px",
+            borderLeft: "3px solid rgba(148, 163, 184, 0.3)",
+            lineHeight: "1.4",
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ================== Company List Component =================
+
+function CompanyListCard({ title, companies, color, enabled }) {
+  if (!enabled || !companies || companies.length === 0) return null;
+  
+  return (
+    <div
+      className="card"
+      style={{
+        padding: "16px 20px",
+        border: `1px solid ${color}40`,
+        background: `linear-gradient(145deg, rgba(15,23,42,0.9) 0%, rgba(30,41,59,0.95) 100%)`,
+      }}
+    >
+      <div
+        style={{
+          fontSize: "0.85rem",
+          fontWeight: 600,
+          color: color,
+          marginBottom: "12px",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+        }}
+      >
+        {title} ({companies.length} companies)
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px",
+        }}
+      >
+        {companies.map((company, idx) => (
+          <span
+            key={idx}
+            style={{
+              padding: "4px 10px",
+              borderRadius: "6px",
+              fontSize: "0.875rem",
+              background: `${color}20`,
+              color: "#e2e8f0",
+              border: `1px solid ${color}40`,
+            }}
+          >
+            {company}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ================== Story charts ============================
 
 function AvgPsLineChart({ dotcom, aiPure, aiBroad }) {
@@ -710,7 +1023,7 @@ function AvgPsLineChart({ dotcom, aiPure, aiBroad }) {
           y: {
             title: {
               display: true,
-              text: "log(Valuation / Revenue)",
+              text: "Valuation / Revenue",
             },
           },
         },
@@ -905,11 +1218,11 @@ function PeScatterChart({ peRows, toggles, dotcom, aiPure, aiBroad }) {
         },
         scales: {
           x: {
-            title: { display: true, text: "log(Share price)" },
+            title: { display: true, text: "Share price" },
             grid: { display: false },
           },
           y: {
-            title: { display: true, text: "log(EPS)" },
+            title: { display: true, text: "EPS" },
           },
         },
       },
@@ -928,7 +1241,7 @@ function PeakBoxplotChart({
   dotVals,
   pureVals,
   broadVals,
-  yTitle = "log(P/S Distribution)",
+  yTitle = "P/S Distribution",
 }) {
   const canvasRef = useRef(null);
   const realStats = [
@@ -1131,11 +1444,11 @@ function McRevScatterChart({ dotcom, aiPure, aiBroad }) {
         },
         scales: {
           x: {
-            title: { display: true, text: "log(Revenue)" },
+            title: { display: true, text: "Revenue" },
             grid: { display: false },
           },
           y: {
-            title: { display: true, text: "log(Market Cap)" },
+            title: { display: true, text: "Market Cap" },
           },
         },
       },
@@ -1624,6 +1937,11 @@ function App() {
   const [peAverages, setPeAverages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [usingFallback, setUsingFallback] = useState(false);
+  
+  // Company names for each cohort
+  const [dotcomCompanies, setDotcomCompanies] = useState([]);
+  const [aiPureCompanies, setAiPureCompanies] = useState([]);
+  const [aiBroadCompanies, setAiBroadCompanies] = useState([]);
 
   // Nasdaq-100 index-level state
   const [peIndexDotcom, setPeIndexDotcom] = useState({ labels: [], values: [] });
@@ -1671,9 +1989,18 @@ function App() {
             loadPeAverages(),
           ]);
 
-        if (dotPanel.length) setDotcom(dotPanel);
-        if (purePanel.length) setAiPure(purePanel);
-        if (broadPanel.length) setAiBroad(broadPanel);
+        if (dotPanel.length) {
+          setDotcom(dotPanel);
+          setDotcomCompanies(extractCompanyNames(dotPanel));
+        }
+        if (purePanel.length) {
+          setAiPure(purePanel);
+          setAiPureCompanies(extractCompanyNames(purePanel));
+        }
+        if (broadPanel.length) {
+          setAiBroad(broadPanel);
+          setAiBroadCompanies(extractCompanyNames(broadPanel));
+        }
         if (peRows && peRows.length) setPeAverages(peRows);
 
         if (
@@ -1892,77 +2219,83 @@ function App() {
     ps: {
       trend: {
         title: "Heat over time",
-        body: "Dot-com valuations rocketed on top of single-product web ideas, often with fragile business models. Today's AI excitement sits on cash-generating platforms.",
         bullets: [
-          "Dot-com: sharp spike as speculation decouples from fundamentals.",
-          "Pure-play AI: averages rise faster than Big Tech AI thanks to narrow revenue bases.",
-          "Big Tech AI: steadier climb because diversified platforms buffer hype swings.",
+      "P/S ratios show clear differences in market behavior over time.",
+      "Dot-coms climbed almost vertically, signaling momentum chasing without backing.",
+      "Big Tech AI grows steadily, supported by diversified revenue streams.",
+      "Pure-play AI rises faster than Big Tech but with more stability than the dot-com peak.",
+      "The slope captures how risk appetite shifts across eras."
         ],
       },
       peaks: {
         title: "Peak distributions",
-        body: "Peak windows show where cohorts cluster. Dot-com names piled up at extreme valuations, pure AI sits above Big Tech, but neither revisit 2000's mania.",
         bullets: [
-          "Dot-com: box sits high with long whiskers—classic froth.",
-          "Pure-play AI: higher medians than Big Tech but tighter than dot-com peaks.",
-          "Big Tech AI: compact box thanks to diversified revenue cushions.",
-        ],
+      "Valuation multiples at peaks vary sharply across eras.",
+      "Dot-com companies reached much higher P/S ratios with many outliers, showing bubble behavior.",
+      "Big Tech AI is tightly clustered.",
+      "Pure-play AI sits between them, elevated but not chaotic.",
+      "AI valuations are supported by stronger revenue growth, providing guardrails."
+    ],
       },
       scale: {
-        title: "Scale vs. Revenue",
-        body: "On the log–log scatter, Big Tech spans huge revenue bases with healthy market-cap alignment. Dot-com and pure AI points overlap across log values.",
+        title: "Market Cap vs. Revenue",
         bullets: [
-          "Dot-com vs. Pure AI: overlapping clouds show both chase value ahead of revenue.",
-          "Big Tech AI: trends up and to the right with fewer outliers.",
-          "Spread: pure AI and dot-com clusters sit at lower revenue scales, amplifying volatility.",
-        ],
+      "The pattern separates speculation-driven bubbles from earnings-supported growth.",
+      "Dot-com firms are scattered and disconnected from revenue.",
+      "Pure-play AI shows a similar scatter pattern.",
+      "Big Tech AI aligns closely with revenue, anchored by scale and proven operations.",
+      "Overlap between dot-coms and pure-play AI shows moments where valuations run ahead of revenue.",
+    ],
       },
       median: {
         title: "Typical peaks",
-        body: "Median P/S at cohort peaks highlights cushion. Big Tech AI stays nearer sustainable bands, while pure AI floats higher—still calmer than dot-com extremes.",
-        bullets: [
-          "Dot-com: elevated medians underline the bubble's breadth.",
-          "Pure-play AI: higher medians hint at optimism priced in before revenue catches up.",
-          "Big Tech AI: lower medians signal investors reward proven engines.",
-        ],
+         bullets: [
+      "Median P/S peaks show what investors typically pay per dollar of sales.",
+      "Dot-com Peak shows significantly higher median multiples.",
+      "Pure-play AI Peak is also highly valued.",
+      "Big Tech AI Peak has the lowest median P/S ratio despite massive revenues.",
+      "The contrast reflects how smaller, fast-growing firms attract concentrated attention, while diversified firms stay more stable."
+    ],
       },
     },
     pe: {
       trend: {
         title: "Heat over time",
-        body: "Average P/E shows how each era prices earnings as excitement swells. Dot-com stair-steps into 2000, Big Tech stays steadier despite the 2022 EPS dip, and pure AI starts calmer before echoing dot-com’s late lift in 2024–25.",
         bullets: [
-          "Dot-com: earnings multiples climb fast as the 2000 peak nears.",
-          "Big Tech AI: lives in a mid-30s–40s band, briefly knocked by 2022 EPS noise.",
-          "Pure-play AI: quiet early, then mirrors dot-com’s late-ramp pattern into 2025.",
-        ],
+      "P/E ratios track how much investors bet on earnings growth.",
+      "Dot-coms stair-stepped upward, chasing potential rather than profits.",
+      "Big Tech AI stays stable, grounded in real earnings.",
+      "Pure-play AI accelerates sharply in 2024–2025, showing speculative spikes similar to the dot-com era."
+    ],
       },
       peaks: {
         title: "Peak distributions",
-        body: "Peak windows show how extremes bunch. Pure-play AI now carries the highest tail, dot-com sits in the middle band, and Big Tech stays tighter after its 2022 reset.",
         bullets: [
-          "Dot-com: middle cluster, elevated but no longer the ceiling.",
-          "Big Tech AI: narrower box, reflecting larger, steadier earnings engines.",
-          "Pure-play AI: widest spread and top end, hinting at a softer dot-com echo.",
-        ],
+      "Peak P/E values show how widely valuations spread at extremes.",
+      "Dot-com valuations are moderately spread, typical for speculative periods.",
+      "Big Tech AI is tightly clustered.",
+      "Pure-play AI spreads widely, signaling uncertainty and disagreement.",
+      "Wide distributions show speculative divergence; tight clusters show shared expectations and stability."
+    ],
       },
       scale: {
         title: "Share price vs EPS (earnings per share)",
-        body: "Log(share price) vs log(EPS) shows how hard each cohort prices its profits. Big Tech stays anchored up-right on earnings heft, dot-com sits mid-pack, and pure AI sweeps upward late in a dot-com-like lane.",
         bullets: [
-          "Dot-com: mid-cluster on the log grid priced above its EPS but not the top.",
-          "Big Tech AI: higher log EPS and price keep the cloud up-right with steadier spread.",
-          "Pure-play AI: late lift drifts toward the dot-com slope before kicking higher.",
-        ],
+      "Share price vs earnings reveals how tightly markets price real profits.",
+      "Dot-coms cluster lower, with many companies priced on potential, not profit.",
+      "Big Tech AI stays tightly aligned with earnings.",
+      "Pure-play AI begins near the dot-com slope but jumps later, reflecting optimism for future growth.",
+      "Distance from earnings signals moments where enthusiasm overtakes fundamentals."
+    ],
       },
       median: {
         title: "Typical peaks",
-        body: "Median P/E at peak windows shows pure AI now on top, dot-com in the middle, and Big Tech grounded in the mid-30s.",
         bullets: [
-          "Dot-com: middle-slot median, a reminder of 1999–2000 heat without leading.",
-          "Big Tech AI: mid-30s median signals valuation discipline from scale.",
-          "Pure-play AI: highest median of the three, edging past dot-com.",
-        ],
+      "Median P/E peaks show what investors typically pay for one dollar of earnings.",
+      "Dot-com and Pure-play AI have taller bars, with Pure-play AI even surpassing dot-com levels.",
+      "Big Tech remains low, showing disciplined valuation.",
+      "The contrast shows where investor optimism concentrates, with Pure-play AI leading in extreme valuations."
+    ],
       },
     },
   };
@@ -1979,9 +2312,7 @@ function App() {
         <div className="tag">Dot-com vs AI</div>
         <h1>Is the AI bubble real?</h1>
         <p>
-          We contrast the late-1990s dot-com spike with today&apos;s AI surge.
-          See why diversified giants are structurally safer than the narrow bets
-          of the past.
+          AI is exploding, valuations are spiking, and everyone’s chasing the next big thing. But history has a way of repeating itself; think back to the dot-com frenzy. Today’s market is a mix of established tech giants and fast-moving pure-play AI startups. The question is: how does this new surge compare to the last era of hype? 
         </p>
         <div className="controls-row">
           <label className="toggle-pill">
@@ -2039,7 +2370,7 @@ function App() {
             setActiveStory("trend");
           }}
         >
-          P/S ratio
+          <FinancialTooltip term="P/S">P/S ratio</FinancialTooltip>
         </button>
         <button
           className={`story-btn ${ratioMode === "pe" ? "active" : ""}`}
@@ -2048,7 +2379,7 @@ function App() {
             setActiveStory("trend");
           }}
         >
-          P/E ratio
+          <FinancialTooltip term="P/E">P/E ratio</FinancialTooltip>
         </button>
       </div>
 
@@ -2056,6 +2387,36 @@ function App() {
       <div className="story-section">
         <div className="section-header">
           <h2>The Data Story</h2>
+          <p>Our visualizations explore how valuations differ across Dot-coms, Pure-play AI, and Big Tech AI, using <FinancialTooltip term="P/S">Price-to-Sales (P/S)</FinancialTooltip> and <FinancialTooltip term="P/E">Price-to-Earnings (P/E)</FinancialTooltip> ratios. Each viz highlights a different aspect of market behavior, helping you see where excitement and risk are concentrated today versus the late-1990s bubble.</p>
+        </div>
+
+        {/* Company Lists */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+            gap: "16px",
+            marginBottom: "2rem",
+          }}
+        >
+          <CompanyListCard
+            title="Dot-com Era Companies"
+            companies={dotcomCompanies}
+            color={SERIES_COLORS.dotcom.solid}
+            enabled={cohortToggles.dotcom}
+          />
+          <CompanyListCard
+            title="Big Tech AI Companies"
+            companies={aiPureCompanies}
+            color={SERIES_COLORS.bigTech.solid}
+            enabled={cohortToggles.aiPure}
+          />
+          <CompanyListCard
+            title="Pure-play AI Companies"
+            companies={aiBroadCompanies}
+            color={SERIES_COLORS.pureAi.solid}
+            enabled={cohortToggles.aiBroad}
+          />
         </div>
 
         <div className="story-grid">
@@ -2067,13 +2428,13 @@ function App() {
                   className={`story-btn ${activeStory === k ? "active" : ""}`}
                   onClick={() => setActiveStory(k)}
                 >
-                  {storyContent[ratioMode][k].title}
+                  {renderTextWithTooltips(storyContent[ratioMode][k].title)}
                 </button>
               ))}
             </div>
             <div className="info-box">
               <div className="info-headline">
-                {storyContent[ratioMode][activeStory]?.title}
+                {renderTextWithTooltips(storyContent[ratioMode][activeStory]?.title)}
               </div>
               <p className="info-body">
                 {storyContent[ratioMode][activeStory]?.body}
@@ -2081,7 +2442,7 @@ function App() {
               <ul>
                 {(storyContent[ratioMode][activeStory]?.bullets || []).map(
                   (b, i) => (
-                    <li key={i}>{b}</li>
+                    <li key={i}>{renderTextWithTooltips(b)}</li>
                   )
                 )}
               </ul>
@@ -2125,7 +2486,7 @@ function App() {
                     dotVals={dotPeakLog}
                     pureVals={aiPurePeakLog}
                     broadVals={aiBroadPeakLog}
-                    yTitle="log(P/S Distribution)"
+                    yTitle="P/S Distribution"
                   />
                 )}
               {!loading &&
@@ -2163,7 +2524,7 @@ function App() {
                 activeStory === "median" && (
                   <MedianBarChart
                     values={[dotMed, pureMed, broadMed]}
-                    label="Median log(P/S)"
+                    label="Median P/S"
                   />
                 )}
               {!loading &&
@@ -2178,28 +2539,28 @@ function App() {
             <div className="chart-subtitle">
               {ratioMode === "ps" &&
                 activeStory === "trend" &&
-                "Logarithmic scale showing valuation multiples over time. Dot-com bubble clearly visible on the left."}
+                "This view shows how each era builds momentum; Dot-coms shot up on hype alone, while AI valuations rise with steadier revenue support."}
               {ratioMode === "pe" &&
                 activeStory === "trend" &&
-                "Average P/E paths: dot-com climbs into 2000, Big Tech steadies after the 2022 dip, and pure AI’s late lift subtly echoes dot-com momentum."}
+                <>Tracking earnings valuations shows discipline vs. hype; Big Tech stays calm, Pure-play AI ramps quickly, and Dot-coms climbed without earnings to justify it. (<FinancialTooltip term="P/E">P/E</FinancialTooltip> ratios)</>}
               {ratioMode === "ps" &&
                 activeStory === "peaks" &&
-                "Distribution of Valuation/Revenue ratios at market peaks. Dot-com outliers sit much higher."}
+                "The spread of peak ratios reveals risk levels: Big Tech stays disciplined, Pure-play AI stretches, and Dot-coms blow past reasonable bounds."}
               {ratioMode === "pe" &&
                 activeStory === "peaks" &&
-                "Peak P/E distributions: pure-play AI carries the highest tail, dot-com sits mid-pack, and Big Tech stays tighter after its 2022 reset."}
+                "Tight clusters of peak ratios signal shared expectations; wide spreads signal uncertainty. The Dot-com era shows the widest disagreement, Pure-play AI sits in the middle, and Big Tech is most aligned."}
               {ratioMode === "ps" &&
                 activeStory === "scale" &&
-                "Comparing Market Cap vs Revenue on a log-log scale. Big Tech aligns with scale; Dot-com scattered."}
+                <>Mapping <FinancialTooltip term="Market Cap">market cap</FinancialTooltip> to <FinancialTooltip term="Revenue">revenue</FinancialTooltip> exposes who's earning their price; AI firms generally track fundamentals, while Dot-coms often floated far above them.</>}
               {ratioMode === "pe" &&
                 activeStory === "scale" &&
-                "Log scatter of share price vs EPS: dot-com clusters mid-low, Big Tech sits up-right on stronger earnings, and pure AI rides the dot-com slope before leaping late."}
+                <>Log scatter of share price vs <FinancialTooltip term="EPS">EPS</FinancialTooltip>: dot-com clusters mid-low, Big Tech sits up-right on stronger earnings, and pure AI rides the dot-com slope before leaping late.</>}
               {ratioMode === "ps" &&
                 activeStory === "median" &&
-                "Median Price-to-Sales ratio at the height of each era. Big Tech valuations remain grounded."}
+                <>Median <FinancialTooltip term="P/S">P/S</FinancialTooltip> values show the "typical" investor mindset: Big Tech keeps things anchored, while smaller AI and Dot-com firms attract sharper speculative bets.</>}
               {ratioMode === "pe" &&
                 activeStory === "median" &&
-                "Median P/E at peak windows: pure-play AI leads, dot-com trails it, and Big Tech holds mid-30s discipline."}
+                <>Median <FinancialTooltip term="P/E">P/E</FinancialTooltip> at peak windows: pure-play AI leads, dot-com trails it, and Big Tech holds mid-30s discipline.</>}
               {usingFallback && (
                 <span
                   style={{
@@ -2214,6 +2575,32 @@ function App() {
                 </span>
               )}
             </div>
+            {/* Log scale notes */}
+            {(ratioMode === "ps" && activeStory === "trend") && (
+              <CollapsibleLogNote>
+                <strong>Note:</strong> This chart uses logarithmic scale on the y-axis (log of P/S ratio). Values are log-transformed to better visualize wide ranges of valuation multiples—from single digits to hundreds—on a single chart. Tooltips show the actual P/S ratio values.
+              </CollapsibleLogNote>
+            )}
+            {(ratioMode === "ps" && activeStory === "peaks") && (
+              <CollapsibleLogNote>
+                <strong>Note:</strong> This chart uses logarithmic scale on the y-axis (log of P/S distribution). Values are log-transformed to better visualize and compare the spread of valuation multiples across different eras, which can range from very low to extremely high values.
+              </CollapsibleLogNote>
+            )}
+            {(ratioMode === "ps" && activeStory === "scale") && (
+              <CollapsibleLogNote>
+                <strong>Note:</strong> This chart uses logarithmic scale on both axes (log of Revenue and log of Market Cap). Values are log-transformed to better visualize relationships across wide ranges of company sizes—from small startups to tech giants—allowing patterns to emerge that would be hidden on a linear scale.
+              </CollapsibleLogNote>
+            )}
+            {(ratioMode === "pe" && activeStory === "scale") && (
+              <CollapsibleLogNote>
+                <strong>Note:</strong> This chart uses logarithmic scale on both axes (log of Share price and log of EPS). Values are log-transformed to better visualize relationships between share prices and earnings across wide ranges—from low-priced stocks to high-flyers. Tooltips show actual dollar values.
+              </CollapsibleLogNote>
+            )}
+            {(ratioMode === "ps" && activeStory === "median") && (
+              <CollapsibleLogNote>
+                <strong>Note:</strong> This chart uses logarithmic scale (log of median P/S). Values are log-transformed to better visualize and compare median valuation multiples across different eras, which helps reveal relative differences when values span multiple orders of magnitude.
+              </CollapsibleLogNote>
+            )}
           </div>
         </div>
       </div>
@@ -2221,10 +2608,11 @@ function App() {
       {/* NASDAQ-100 INDEX-LEVEL SECTION (shares metric toggle above) */}
       <div className="story-section">
         <div className="section-header">
-          <h2>Nasdaq-100 Index Valuation Metrics</h2>
+          <h2><FinancialTooltip term="NASDAQ-100">Nasdaq-100</FinancialTooltip> Index Valuation Metrics</h2>
+          <p>The <FinancialTooltip term="NASDAQ-100">Nasdaq-100</FinancialTooltip> offers a clean view of how markets price growth across eras, making it ideal for comparing the dot-com bubble with today's AI-driven surge. In the late 1990s, valuations routinely stretched far beyond what <FinancialTooltip term="Revenue">revenue</FinancialTooltip> or earnings could justify, as many companies in the index had limited sales and little profit yet traded at extreme multiples. In contrast, the modern AI era shows elevated ratios as well, but they rise alongside massive <FinancialTooltip term="Revenue">revenue</FinancialTooltip> and robust profitability from established tech leaders. The result is a market still shaped by excitement, but far more anchored in real economic performance than during the dot-com peak.</p>
           <p className="section-subtitle">
             Comparing the dot-com bubble (1996–2000) vs the modern AI era
-            (2022–2025) using index-level {metricName} ratios.
+            (2022–2025) using index-level {ratioMode === "ps" ? <FinancialTooltip term="P/S">{metricName}</FinancialTooltip> : <FinancialTooltip term="P/E">{metricName}</FinancialTooltip>} ratios.
           </p>
         </div>
 
@@ -2249,7 +2637,7 @@ function App() {
               />
             </div>
             <div className="chart-subtitle">
-              Side-by-side view of Nasdaq-100 index {metricName} during the
+              Side-by-side view of <FinancialTooltip term="NASDAQ-100">Nasdaq-100</FinancialTooltip> index {ratioMode === "ps" ? <FinancialTooltip term="P/S">{metricName}</FinancialTooltip> : <FinancialTooltip term="P/E">{metricName}</FinancialTooltip>} during the
               dot-com bubble vs the recent AI cycle.
             </div>
           </div>
@@ -2264,6 +2652,149 @@ function App() {
               valuations sit on the same PEAK line (0 on the x-axis).
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* INDEX CONCENTRATION SECTION */}
+      <div className="story-section">
+        <div className="section-header">
+          <h2>Index Concentration: Top 3 Companies</h2>
+        </div>
+
+        <div className="card chart-card">
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: "0.95rem",
+              fontFamily: "'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            }}
+          >
+            <thead>
+              <tr
+                style={{
+                  borderBottom: "2px solid rgba(148, 163, 184, 0.3)",
+                  textAlign: "left",
+                }}
+              >
+                <th
+                  style={{
+                    padding: "12px 16px",
+                    color: "#cbd5e1",
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Era
+                </th>
+                <th
+                  style={{
+                    padding: "12px 16px",
+                    color: "#cbd5e1",
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Top 3 Companies
+                </th>
+                <th
+                  style={{
+                    padding: "12px 16px",
+                    color: "#cbd5e1",
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    textAlign: "right",
+                  }}
+                >
+                  % of Index
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                style={{
+                  borderBottom: "1px solid rgba(148, 163, 184, 0.2)",
+                }}
+              >
+                <td
+                  style={{
+                    padding: "16px",
+                    color: SERIES_COLORS.dotcom.solid,
+                    fontWeight: 600,
+                  }}
+                >
+                  Dot Com Era (2000)
+                </td>
+                <td
+                  style={{
+                    padding: "16px",
+                    color: "#e2e8f0",
+                  }}
+                >
+                  Microsoft, Intel, Cisco
+                </td>
+                <td
+                  style={{
+                    padding: "16px",
+                    color: SERIES_COLORS.dotcom.solid,
+                    textAlign: "right",
+                    fontFamily: "'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco",
+                    fontWeight: 600,
+                  }}
+                >
+                  21.5%
+                </td>
+              </tr>
+              <tr>
+                <td
+                  style={{
+                    padding: "16px",
+                    color: SERIES_COLORS.bigTech.solid,
+                    fontWeight: 600,
+                  }}
+                >
+                  AI Era (2025)
+                </td>
+                <td
+                  style={{
+                    padding: "16px",
+                    color: "#e2e8f0",
+                  }}
+                >
+                  NVIDIA, Apple, Alphabet
+                </td>
+                <td
+                  style={{
+                    padding: "16px",
+                    color: SERIES_COLORS.bigTech.solid,
+                    textAlign: "right",
+                    fontFamily: "'Space Mono', ui-monospace, SFMono-Regular, Menlo, Monaco",
+                    fontWeight: 600,
+                  }}
+                >
+                  36.7%
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p
+            style={{
+              marginTop: "20px",
+              padding: "16px",
+              color: "#9ca3af",
+              fontSize: "0.9rem",
+              lineHeight: "1.6",
+              borderTop: "1px solid rgba(148, 163, 184, 0.2)",
+            }}
+          >
+            Today's AI era shows higher concentration than the dot-com bubble—the top 3 companies now command over a third of the index. However, these giants have diversified revenue streams and proven earnings, unlike the speculative single-product bets of 2000.
+          </p>
         </div>
       </div>
 
@@ -2346,8 +2877,8 @@ function App() {
             </div>
             <p className="info-body">
               {macroStory === "bull"
-                ? "Yes, it's true that the stock market growth is outpacing GDP growth, but viewing it in the bigger picture it's not as bad as it seems, and not close to the dot-com bubble.  Unemployment is rising, but still low by historical standards."
-                : "The interest rate is generally raised to lower inflation, but despite decades-high rates, inflation remains sticky.  In the dot-com bubble, interest rates were similar to today's pre-crash rates."}
+                ? "Despite volatility, economic fundamentals remain solid. Productivity gains, steady demand, and stable employment support continued expansion. The data suggests normalization rather than deterioration, allowing room for gradual, sustainable growth. Takeaway: Yes, it's true that the stock market growth is outpacing GDP growth, but viewing it in the bigger picture it's not as bad as it seems, and not close to the dot-com bubble.  Unemployment is rising, but still low by historical standards."
+                : "Stubborn inflation keeps interest rates high, leaving limited room for policy easing. Elevated borrowing costs can restrict investment and pressure corporate margins. With financial conditions tightening and historical parallels hinting at vulnerability, the risk remains that persistent inflation and high rates could trigger a sharper slowdown. Takeaway: Inflation and rates are still concerning, but not a full-on crisis signal yet. The pressure is real, and it could reflect the past downturns more closely if it lasts longer."}
             </p>
           </div>
         )}
