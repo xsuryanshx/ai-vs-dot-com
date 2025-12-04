@@ -317,6 +317,29 @@ function meanFinite(arr) {
   return sum / values.length;
 }
 
+// Rough earnings-per-share guess using a constant net margin against revenue.
+const EPS_MARGIN_GUESS = 0.15;
+function estimateEpsByYear(records, margin = EPS_MARGIN_GUESS) {
+  const buckets = new Map();
+
+  records.forEach((r) => {
+    const rev = Number(r.Revenue);
+    if (Number.isFinite(rev) && rev > 0) {
+      if (!buckets.has(r.Year)) buckets.set(r.Year, []);
+      buckets.get(r.Year).push(rev);
+    }
+  });
+
+  const epsMap = new Map();
+  buckets.forEach((vals, year) => {
+    if (!vals.length) return;
+    const avgRev = vals.reduce((s, v) => s + v, 0) / vals.length;
+    epsMap.set(year, avgRev * margin);
+  });
+
+  return epsMap;
+}
+
 function findPeakIndex(values) {
   let peakIdx = -1;
   let peakVal = -Infinity;
@@ -636,19 +659,38 @@ function AvgPeLineChart({ peRows, toggles }) {
   return <canvas ref={canvasRef} />;
 }
 
-function PeScatterChart({ peRows, toggles }) {
+function PeScatterChart({ peRows, toggles, dotcom, aiPure, aiBroad }) {
   const canvasRef = useRef(null);
 
-  const makePoints = (key, enabled) =>
+  const epsMaps = {
+    Dotcom: estimateEpsByYear(dotcom || []),
+    BigTechAI: estimateEpsByYear(aiPure || []),
+    PureAI: estimateEpsByYear(aiBroad || []),
+  };
+
+  const formatNumber = (val) => {
+    const num = Number(val);
+    if (!Number.isFinite(num)) return "N/A";
+    if (num >= 1000)
+      return num.toLocaleString("en-US", { maximumFractionDigits: 0 });
+    if (num >= 10) return num.toLocaleString("en-US", { maximumFractionDigits: 1 });
+    return num.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  };
+
+  const makePoints = (key, epsMap, enabled) =>
     enabled
-      ? peRows
+      ? (peRows || [])
           .map((r) => {
-            const raw = r[key];
-            if (raw === "" || raw == null) return null;
-            const num = Number(raw);
-            return Number.isFinite(num) ? { x: r.Year, y: num } : null;
+            const peVal = toNumberOrNull(r[key]);
+            const eps = epsMap.get(r.Year);
+            if (!Number.isFinite(peVal) || !Number.isFinite(eps) || eps <= 0) {
+              return null;
+            }
+            const sharePrice = peVal * eps;
+            if (!Number.isFinite(sharePrice) || sharePrice <= 0) return null;
+            return { x: sharePrice, y: eps, year: r.Year };
           })
-          .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
+          .filter(Boolean)
       : [];
 
   useChart(
@@ -659,7 +701,7 @@ function PeScatterChart({ peRows, toggles }) {
         datasets: [
           {
             label: "Dot-com",
-            data: makePoints("Dotcom", toggles.dotcom),
+            data: makePoints("Dotcom", epsMaps.Dotcom, toggles.dotcom),
             backgroundColor: SERIES_COLORS.dotcom.fill,
             borderColor: SERIES_COLORS.dotcom.solid,
             borderWidth: 1,
@@ -668,7 +710,7 @@ function PeScatterChart({ peRows, toggles }) {
           },
           {
             label: "Big Tech AI",
-            data: makePoints("BigTechAI", toggles.aiPure),
+            data: makePoints("BigTechAI", epsMaps.BigTechAI, toggles.aiPure),
             backgroundColor: SERIES_COLORS.bigTech.fill,
             borderColor: SERIES_COLORS.bigTech.solid,
             borderWidth: 1,
@@ -677,7 +719,7 @@ function PeScatterChart({ peRows, toggles }) {
           },
           {
             label: "Pure-play AI",
-            data: makePoints("PureAI", toggles.aiBroad),
+            data: makePoints("PureAI", epsMaps.PureAI, toggles.aiBroad),
             backgroundColor: SERIES_COLORS.pureAi.fill,
             borderColor: SERIES_COLORS.pureAi.solid,
             borderWidth: 1,
@@ -696,24 +738,38 @@ function PeScatterChart({ peRows, toggles }) {
             borderColor: THEME.tooltipBorder,
             borderWidth: 1,
             callbacks: {
-              label: (c) =>
-                `${c.dataset.label}: ${c.raw.y.toFixed(1)}x P/E in ${c.raw.x}`,
+              label: (c) => {
+                const price = formatNumber(c.raw.x);
+                const eps = formatNumber(c.raw.y);
+                return `${c.dataset.label}: $${price} price, $${eps} EPS (Year ${c.raw.year})`;
+              },
             },
           },
         },
         scales: {
           x: {
-            title: { display: true, text: "Year" },
+            type: "logarithmic",
+            title: { display: true, text: "Share price" },
             grid: { display: false },
-            ticks: { precision: 0 },
+            ticks: { callback: (v) => formatNumber(v) },
           },
           y: {
-            title: { display: true, text: "P/E Ratio" },
+            type: "logarithmic",
+            title: { display: true, text: "EPS (earnings per share)" },
+            ticks: { callback: (v) => formatNumber(v) },
           },
         },
       },
     }),
-    [JSON.stringify(peRows), toggles.dotcom, toggles.aiPure, toggles.aiBroad]
+    [
+      JSON.stringify(peRows),
+      toggles.dotcom,
+      toggles.aiPure,
+      toggles.aiBroad,
+      dotcom.length,
+      aiPure.length,
+      aiBroad.length,
+    ]
   );
 
   return <canvas ref={canvasRef} />;
@@ -1715,39 +1771,39 @@ function App() {
     },
     pe: {
       trend: {
-        title: "Earnings heat",
-        body: "Average P/E traces how quickly sentiment whipsaws when earnings wobble. Dot-com crests into 2000, Big Tech dips with Amazon's 2022 loss, and pure AI sprints higher in 2024–25.",
+        title: "Heat over time",
+        body: "Average P/E shows how each era prices earnings as excitement swells. Dot-com stair-steps into 2000, Big Tech stays steadier despite the 2022 EPS dip, and pure AI starts calmer before echoing dot-com’s late lift in 2024–25.",
         bullets: [
-          "Dot-com: climbs from single digits toward ~76x at the bubble peak.",
-          "Big Tech AI: mid-30s–40s band with a 2022 negative blip from Amazon's EPS swing.",
-          "Pure-play AI: volatile path that rockets in 2024–25 as valuations outrun earnings.",
+          "Dot-com: earnings multiples climb fast as the 2000 peak nears.",
+          "Big Tech AI: lives in a mid-30s–40s band, briefly knocked by 2022 EPS noise.",
+          "Pure-play AI: quiet early, then mirrors dot-com’s late-ramp pattern into 2025.",
         ],
       },
       peaks: {
-        title: "Peak P/E spreads",
-        body: "Peak windows show how earnings multiples bunch. Dot-com still sits highest, Big Tech moderates after the 2022 dip, and pure AI stretches wide into 2025.",
+        title: "Peak distributions",
+        body: "Peak windows show how extremes bunch. Pure-play AI now carries the highest tail, dot-com sits in the middle band, and Big Tech stays tighter after its 2022 reset.",
         bullets: [
-          "Dot-com: peak P/E values stay elevated versus later eras.",
-          "Big Tech AI: tighter spread but dragged by the 2022 negative print.",
-          "Pure-play AI: sharp climb into triple digits by 2025 widens the box.",
+          "Dot-com: middle cluster, elevated but no longer the ceiling.",
+          "Big Tech AI: narrower box, reflecting larger, steadier earnings engines.",
+          "Pure-play AI: widest spread and top end, hinting at a softer dot-com echo.",
         ],
       },
       scale: {
-        title: "P/E by year",
-        body: "Scatter the yearly P/E points to see sentiment swings—negative 2022 for Big Tech, and surging pure AI prints in 2024–25 dominate the view.",
+        title: "Share price vs EPS (earnings per share)",
+        body: "Share price against EPS on a log scale to see how each cohort prices profits. Big Tech leans on hefty earnings, dot-com points cluster lower, and pure AI rockets in the later years.",
         bullets: [
-          "Dot-com: steady ascent into the 1999–2000 crest.",
-          "Big Tech AI: quick downtick in 2022 before settling back to ~35x.",
-          "Pure-play AI: dramatic rise in 2024–25 after muted early years.",
+          "Dot-com: low-to-mid EPS keeps most points low and left.",
+          "Big Tech AI: higher EPS lifts the cloud up-right, even with calmer pricing.",
+          "Pure-play AI: late surge pulls price faster than EPS, looking closer to dot-com than Big Tech.",
         ],
       },
       median: {
-        title: "Typical P/E peaks",
-        body: "Median P/E at peak windows shows dot-com still ahead, Big Tech in the mid-30s, and pure AI climbing into the low 30s despite negatives in 2021–22.",
+        title: "Typical peaks",
+        body: "Median P/E at peak windows shows pure AI now on top, dot-com in the middle, and Big Tech grounded in the mid-30s.",
         bullets: [
-          "Dot-com: median peak P/E near 28x across 1999–2000.",
-          "Big Tech AI: median rebounds to mid-30s even with the 2022 drag.",
-          "Pure-play AI: median around 31x, masking a wide tail into 2025.",
+          "Dot-com: middle-slot median, a reminder of 1999–2000 heat without leading.",
+          "Big Tech AI: mid-30s median signals valuation discipline from scale.",
+          "Pure-play AI: highest median of the three, edging past dot-com.",
         ],
       },
     },
@@ -1939,6 +1995,9 @@ function App() {
                   <PeScatterChart
                     peRows={peAverages}
                     toggles={cohortToggles}
+                    dotcom={activeDotcom}
+                    aiPure={activeAiPure}
+                    aiBroad={activeAiBroad}
                   />
                 )}
               {!loading &&
@@ -1964,25 +2023,25 @@ function App() {
                 "Logarithmic scale showing valuation multiples over time. Dot-com bubble clearly visible on the left."}
               {ratioMode === "pe" &&
                 activeStory === "trend" &&
-                "Average P/E paths: dot-com rockets into 1999–2000, Big Tech shows a 2022 dip from Amazon's loss, and pure AI spikes into 2024–25."}
+                "Average P/E paths: dot-com climbs into 2000, Big Tech steadies after the 2022 dip, and pure AI’s late lift subtly echoes dot-com momentum."}
               {ratioMode === "ps" &&
                 activeStory === "peaks" &&
                 "Distribution of Valuation/Revenue ratios at market peaks. Dot-com outliers sit much higher."}
               {ratioMode === "pe" &&
                 activeStory === "peaks" &&
-                "Peak P/E spread across cohorts—dot-com remains highest, Big Tech dips in 2022, pure AI stretches widest into 2025."}
+                "Peak P/E distributions: pure-play AI carries the highest tail, dot-com sits mid-pack, and Big Tech stays tighter after its 2022 reset."}
               {ratioMode === "ps" &&
                 activeStory === "scale" &&
                 "Comparing Market Cap vs Revenue on a log-log scale. Big Tech aligns with scale; Dot-com scattered."}
               {ratioMode === "pe" &&
                 activeStory === "scale" &&
-                "Yearly P/E scatter highlights sentiment swings, including the 2022 Big Tech dip and pure AI's late surge."}
+                "Log scatter of share price vs EPS shows dot-com clustered low, Big Tech buoyed by larger earnings, and pure AI drifting toward dot-com territory before leaping late."}
               {ratioMode === "ps" &&
                 activeStory === "median" &&
                 "Median Price-to-Sales ratio at the height of each era. Big Tech valuations remain grounded."}
               {ratioMode === "pe" &&
                 activeStory === "median" &&
-                "Median P/E at peak windows. Dot-com leads, Big Tech stays mid-30s, pure AI sits around low-30s with a wide tail."}
+                "Median P/E at peak windows: pure-play AI leads, dot-com trails it, and Big Tech holds mid-30s discipline."}
               {usingFallback && (
                 <span
                   style={{
