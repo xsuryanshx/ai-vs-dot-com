@@ -1,4 +1,4 @@
-const { useEffect, useRef, useState } = React;
+const { useEffect, useMemo, useRef, useState } = React;
 
 // ============================================================
 // 0. PATHS & THEME
@@ -55,6 +55,7 @@ const MACRO_COLUMNS = [
   "GDP Yearly Growth",
   "NASDAQ Yearly Growth",
 ];
+const MACRO_NORMALIZATION = "Z-score (standardize)";
 
 // Clamp value to the provided range (numeric guard only).
 function clamp(value, min, max) {
@@ -1865,7 +1866,7 @@ function IndexOverlayChart({ metricName, dotSeries, modernSeries }) {
 
 // ================== Macro chart ============================
 
-function MacroLineChart({ series, yTitle }) {
+function MacroLineChart({ series, yTitle, yBounds }) {
   const canvasRef = useRef(null);
 
   useChart(
@@ -1921,11 +1922,13 @@ function MacroLineChart({ series, yTitle }) {
           },
           y: {
             title: { display: true, text: yTitle },
+            ...(yBounds?.min != null ? { min: yBounds.min } : {}),
+            ...(yBounds?.max != null ? { max: yBounds.max } : {}),
           },
         },
       },
     }),
-    [JSON.stringify(series), yTitle]
+    [JSON.stringify(series), yTitle, yBounds?.min, yBounds?.max]
   );
 
   return <canvas ref={canvasRef} />;
@@ -1966,9 +1969,6 @@ function App() {
   const [macroColsState, setMacroColumns] = useState([]);
   const [macroSelection, setMacroSelection] = useState({});
   const [macroRange, setMacroRange] = useState([0, 0]);
-  const [macroNormalization, setMacroNormalization] = useState(
-    "Z-score (standardize)"
-  );
   const [macroZoom, setMacroZoom] = useState("Dot-com Bubble (1995–2002)");
   const [macroZoom2, setMacroZoom2] = useState("AI Boom (2022–2025)");
   const [macroStory, setMacroStory] = useState(null);
@@ -2106,7 +2106,7 @@ function App() {
   const macroNormData = normalizeMacro(
     macroFiltered,
     macroSelectedCols,
-    macroNormalization,
+    MACRO_NORMALIZATION,
     macroRows
   );
 
@@ -2160,7 +2160,7 @@ function App() {
   const macroZoomNorm = normalizeMacro(
     macroZoomRows,
     macroSelectedCols,
-    macroNormalization,
+    MACRO_NORMALIZATION,
     macroRows
   );
   const macroZoomSeries = buildSeries(macroZoomRows, macroZoomNorm);
@@ -2175,10 +2175,21 @@ function App() {
   const macroZoomNorm2 = normalizeMacro(
     macroZoomRows2,
     macroSelectedCols,
-    macroNormalization,
+    MACRO_NORMALIZATION,
     macroRows
   );
   const macroZoomSeries2 = buildSeries(macroZoomRows2, macroZoomNorm2);
+  const zoomYAxisBounds = useMemo(() => {
+    const values = [macroZoomSeries, macroZoomSeries2].flatMap((series) =>
+      series.flatMap((entry) => entry.data.map((point) => point.y))
+    );
+    const finiteValues = values.filter(Number.isFinite);
+    if (!finiteValues.length) return null;
+    const min = Math.min(...finiteValues);
+    const max = Math.max(...finiteValues);
+    const padding = min === max ? 1 : (max - min) * 0.05;
+    return { min: min - padding, max: max + padding };
+  }, [macroZoomSeries, macroZoomSeries2]);
 
   const applyMacroStory = (storyType) => {
     setMacroStory(storyType);
@@ -2204,7 +2215,6 @@ function App() {
 
   const resetView = () => {
     setMacroStory(null);
-    setMacroNormalization("Z-score (standardize)");
     setMacroZoom("Dot-com Bubble (1995–2002)");
     setMacroZoom2("AI Boom (2022–2025)");
     if (macroRows.length > 0) {
@@ -2894,20 +2904,6 @@ function App() {
             <h3>Configuration</h3>
             <div className="control-group">
               <div className="field">
-                <label>Normalization</label>
-                <select
-                  value={macroNormalization}
-                  onChange={(e) =>
-                    setMacroNormalization(e.target.value)
-                  }
-                >
-                  <option>Z-score (standardize)</option>
-                  <option>Index to 100</option>
-                  <option>None</option>
-                </select>
-              </div>
-
-              <div className="field">
                 <label>Date Range</label>
                 <div className="badges">
                   <span>
@@ -2999,7 +2995,7 @@ function App() {
               <div className="chart-container">
                 <MacroLineChart
                   series={macroSeries}
-                  yTitle={macroNormalization}
+                  yTitle={MACRO_NORMALIZATION}
                 />
               </div>
             </div>
@@ -3049,7 +3045,8 @@ function App() {
                   >
                     <MacroLineChart
                       series={macroZoomSeries}
-                      yTitle={macroNormalization}
+                      yTitle={MACRO_NORMALIZATION}
+                      yBounds={zoomYAxisBounds}
                     />
                   </div>
                 </div>
@@ -3092,7 +3089,8 @@ function App() {
                   >
                     <MacroLineChart
                       series={macroZoomSeries2}
-                      yTitle={macroNormalization}
+                      yTitle={MACRO_NORMALIZATION}
+                      yBounds={zoomYAxisBounds}
                     />
                   </div>
                 </div>
