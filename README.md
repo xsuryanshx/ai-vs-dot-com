@@ -1,6 +1,6 @@
 # AI vs. Dot-Com Comparison
 
-[We're Live!](ai-vs-dot-com.vercel.app/)
+[We're Live!](https://ai-vs-dot-com.vercel.app/)
 
 This repository contains tools and dashboards to compare the current AI boom with the Dot-com bubble, using macroeconomic data and company metrics.
 
