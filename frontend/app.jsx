@@ -26,20 +26,26 @@ const THEME = {
   tooltipBorder: "rgba(255, 255, 255, 0.1)",
 };
 
+// Colorblind-friendly palette for main series (cohorts)
+// Using distinct colors that work for all types of colorblindness
+// Orange, Cyan, and Purple are distinguishable by brightness/shape even for colorblind users
 const SERIES_COLORS = {
-  dotcom: { solid: "#f472b6", fill: "rgba(244, 114, 182, 0.2)" },
-  bigTech: { solid: "#22c55e", fill: "rgba(34, 197, 94, 0.2)" },
-  pureAi: { solid: "#38bdf8", fill: "rgba(56, 189, 248, 0.2)" },
+  dotcom: { solid: "#f59e0b", fill: "rgba(245, 158, 11, 0.2)" }, // Amber/Orange - warm, distinct
+  bigTech: { solid: "#06b6d4", fill: "rgba(6, 182, 212, 0.2)" }, // Cyan - cool, distinct
+  pureAi: { solid: "#a855f7", fill: "rgba(168, 85, 247, 0.2)" }, // Purple - distinct from both
 };
 
-const MACRO_COLORS = ["#a78bfa", "#38bdf8", "#34d399", "#f472b6", "#fbbf24"];
+// Separate colorblind-friendly palette for macro indicators
+// Different from SERIES_COLORS to avoid confusion
+// Colors chosen for distinct brightness levels and colorblind accessibility
+const MACRO_COLORS = ["#9333ea", "#14b8a6", "#eab308", "#ef4444", "#3b82f6"];
 
 const MACRO_COLOR_MAP = {
-  Inflation: "#a78bfa",
-  Unemployment: "#38bdf8",
-  "Interest Rate": "#34d399",
-  "GDP Yearly Growth": "#f472b6",
-  "NASDAQ Yearly Growth": "#fbbf24",
+  Inflation: "#9333ea", // Deep purple/violet - distinct
+  Unemployment: "#14b8a6", // Teal - different shade from Big Tech cyan
+  "Interest Rate": "#eab308", // Yellow/amber - distinct brightness
+  "GDP Yearly Growth": "#ef4444", // Red - distinct from orange Dot-com
+  "NASDAQ Yearly Growth": "#3b82f6", // Blue - distinct from cyan Big Tech
 };
 
 const MACRO_COLUMNS = [
